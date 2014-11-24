@@ -1,2 +1,1 @@
-ps6
-===
+Ji Hun setting up ps6...
