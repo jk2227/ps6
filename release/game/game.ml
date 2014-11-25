@@ -2,22 +2,16 @@ open Definitions
 open Util
 open Constants
 open Netgraphics
+open Initialization
 
 (* You have to implement this. Change it from int to yout own state type*)
-type game = int 
+type game = Game of game_status_data
 
-let game_datafication g =
-	failwith 
-		"This is my grandson. He’s been your rival since you were a baby. 
-		…Erm, what is his name again?"
-
-                        (* Professor Oak, Steammon researcher extraordinaire *)
+let game_datafication g = match g with 
+  | Game x -> x 
+  | _ -> failwith "bleh"
 	
-let game_from_data game_data = 
-	failwith 
-    "I like shorts! They're comfy and easy to wear!"
-
-                        (* Youngster, upon challenging a stranger to battle *)
+let game_from_data game_data = Game (game_data)
 
 let handle_step g ra ba =
 	failwith 
@@ -27,7 +21,7 @@ let handle_step g ra ba =
                         (* Youngster Joey, about his Raticate *)
 
 let init_game () =
-	failwith
-    "We need Pokéballs! P-O-K-accent E balls!"
-
-                        (* Barry, rival in Steammon Diamond/Pearl/Platinum *)
+    init_pool ("moves.csv") ("steammon.csv");
+    ((([],[],0),([],[],0)),TeamNameRequest,TeamNameRequest, 
+        hash_to_list (Initialization.move_table), 
+        hash_to_list(Initialization.mon_table))
