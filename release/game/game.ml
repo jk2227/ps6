@@ -9,7 +9,6 @@ type game = Game of game_status_data
 
 let game_datafication g = match g with 
   | Game x -> x 
-  | _ -> failwith "bleh"
 	
 let game_from_data game_data = Game (game_data)
 
@@ -22,6 +21,6 @@ let handle_step g ra ba =
 
 let init_game () =
     init_pool ("moves.csv") ("steammon.csv");
-    ((([],[],0),([],[],0)),TeamNameRequest,TeamNameRequest, 
+    (Game(([],[],0),([],[],0)),TeamNameRequest,TeamNameRequest, 
         hash_to_list (Initialization.move_table), 
         hash_to_list(Initialization.mon_table))
