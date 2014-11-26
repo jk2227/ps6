@@ -12,56 +12,34 @@ let game_datafication g = match g with
 	
 let game_from_data game_data = Game (game_data)
 
-  let battle gsd rs bs = 
-   (*I think faster one attacks first*) 
-   (* add_update (SetFirstAttacker Red) ; *)
-    failwith "TODO"
-  in 
+let handle_step g ra ba = 
+    (*
+        check if it's in pool of avail steammons
+        if it is check that you have enough creds
+        if you do then add it to the respective player's
+        list of steammon's and sent pickrequest to appropriate player
+        if not choose the lowest cost or something... i don't 
+        know the details well for that case
+    *)
+  let draft color ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
+    match color with 
+    | Red -> failwith "todo" (* (None, ...) *)
+    | Blue -> failwith "todo" (* (None, ...) *)
+  in
 
-  let exception_handle gsd = 
-    if !init = 1 then 
-        initialize gsd "Red" "Blue"
-    else if !drafting = 1 then 
-      match (hash_to_list draftpool) with 
-      | h::t -> let (n,m) = findMin h.species h in
-        draftupdate n m !draftColor;
-        let ((rsl,ri,rcred),(bsl,bi,bcred)) = gsd in begin
-        match !draftColor with 
-        | Red -> changeColor ();  
-                 if m.cost > rcred then 
-                   let gsd = (((m::rsl),ri,0), (bsl,bi,bcred)) in
-                    (None, gsd, None, 
-                    Some(Request(PickRequest(!draftColor,gsd, 
-                    hash_to_list (Initialization.move_table), 
-                    hash_to_list(draftpool))))) 
-                else  
-                  let gsd = (((m::rsl),ri,(rcred-m.cost)), (bsl,bi,bcred)) in
-                  (None, gsd, None, 
-                  Some(Request(PickRequest(Blue,gsd, 
-                  hash_to_list (Initialization.move_table), 
-                  hash_to_list(draftpool))))) 
-        | Blue -> changeColor ();
-                  if m.cost > bcred then 
-                    let gsd = ((rsl,ri,rcred), (m::bsl,bi,0)) in
-                    (None, gsd, None, 
-                    Some(Request(PickRequest(Blue,gsd, 
-                    hash_to_list (Initialization.move_table), 
-                    hash_to_list(draftpool)))))
-                  else 
-                    let gsd = ((rsl,ri,(rcred)), (m::bsl,bi,bcred-m.cost)) in
-                    (None, gsd, None, 
-                    Some(Request(PickRequest(Blue,gsd, 
-                    hash_to_list (Initialization.move_table), 
-                    hash_to_list(draftpool)))))
-        end
-      | _ -> failwith "not enough steammons available to complete draft" 
-    else if !invent = 1 then 
-      inventory gsd [] [] true
-    else failwith "Finish exception handling from Section 4.6"
-  in 
+  match g, ra, ba with 
+  | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) ->
+    (None, gsd, Some(Request(PickRequest(Red,gsd,
+        hash_to_list (Initialization.move_table), 
+        hash_to_list(Initialization.mon_table)))), None)
+  | Game gsd, Action(PickSteammon name), DoNothing -> draft Red gsd name
+  | Game gsd, DoNothing, Action(PickSteammon name) -> draft Blue gsd name  
+  | _ -> failwith "swag"
 
+ 
 let init_game () =
     init_pool ("moves.csv") ("steammon.csv");
-    (Game(([],[],0),([],[],0)),TeamNameRequest,TeamNameRequest, 
+    (Game(([],[],cSTEAMMON_CREDITS),([],[],cSTEAMMON_CREDITS)),
+        TeamNameRequest,TeamNameRequest, 
         hash_to_list (Initialization.move_table), 
         hash_to_list(Initialization.mon_table))
