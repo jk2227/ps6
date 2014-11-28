@@ -7,6 +7,8 @@ open Initialization
 (* You have to implement this. Change it from int to yout own state type*)
 type game = Game of game_status_data
 
+let draftRD = ref 1
+
 let game_datafication g = match g with 
   | Game x -> x 
 	
@@ -22,18 +24,44 @@ let handle_step g ra ba =
         know the details well for that case
     *)
   let draft color ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
-    if Table.mem Initialization.mon_table name then 
+    if Table.mem Initialization.mon_table name && (List.length rsl < 6 ||
+      List.length bsl <6) then 
       let s = Table.find Initialization.mon_table name in 
       let sCred = s.cost in 
-      match color with 
-      | Red -> if sCred < rcred then 
+      let isOdd = (!draftRD mod 2 = 1) in 
+      match color, isOdd with 
+      | Red, true -> if sCred <= rcred then 
             Table.remove Initialization.mon_table name;
+            draftRD := !draftRD + 1; 
             let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
             (None, gsd, None,
                Some(Request(PickRequest(Blue,gsd,
         hash_to_list (Initialization.move_table), 
         hash_to_list(Initialization.mon_table))))) 
-      | Blue -> failwith "lolol"
+      | Red, false -> if sCred <= rcred then 
+            Table.remove Initialization.mon_table name;
+            draftRD := !draftRD +1;
+            let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
+            (None, gsd,Some(Request(PickRequest(Red,gsd,
+            hash_to_list (Initialization.move_table), 
+            hash_to_list(Initialization.mon_table)))), None) 
+      | Blue, true -> if sCred <= bcred then 
+            Table.remove Initialization.mon_table name;
+            draftRD := !draftRD +1;
+            let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
+            (None, gsd,Some(Request(PickRequest(Red,gsd,
+            hash_to_list (Initialization.move_table), 
+            hash_to_list(Initialization.mon_table)))), None) 
+      | Blue, false -> if sCred <= bcred then 
+            Table.remove Initialization.mon_table name;
+            draftRD := !draftRD + 1; 
+            let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
+            (None, gsd, None,
+               Some(Request(PickRequest(Blue,gsd,
+        hash_to_list (Initialization.move_table), 
+        hash_to_list(Initialization.mon_table))))) 
+    else if (List.length rsl = 6 && List.length bsl = 6) then 
+      failwith "move onto inventory stage :')"
     else failwith "meh"
   in
 
