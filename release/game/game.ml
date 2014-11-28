@@ -22,9 +22,19 @@ let handle_step g ra ba =
         know the details well for that case
     *)
   let draft color ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
-    match color with 
-    | Red -> failwith "todo" (* (None, ...) *)
-    | Blue -> failwith "todo" (* (None, ...) *)
+    if Table.mem Initialization.mon_table name then 
+      let s = Table.find Initialization.mon_table name in 
+      let sCred = s.cost in 
+      match color with 
+      | Red -> if sCred < rcred then 
+            Table.remove Initialization.mon_table name;
+            let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
+            (None, gsd, None,
+               Some(Request(PickRequest(Blue,gsd,
+        hash_to_list (Initialization.move_table), 
+        hash_to_list(Initialization.mon_table))))) 
+      | Blue -> failwith "lolol"
+    else failwith "meh"
   in
 
   match g, ra, ba with 
