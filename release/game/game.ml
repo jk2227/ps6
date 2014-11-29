@@ -32,6 +32,7 @@ let handle_step g ra ba =
       let isOdd = (!draftRD mod 2 = 1) in 
       match color, isOdd with 
       | Red, true -> if sCred <= rcred then 
+            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Red));
             add_update(SetChosenSteammon (name));
             Table.remove draftpool name;
             draftRD := !draftRD + 1; 
@@ -41,6 +42,7 @@ let handle_step g ra ba =
         hash_to_list (Initialization.move_table), 
         hash_to_list(draftpool))))) 
       | Red, false -> if sCred <= rcred then 
+            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Red));
             add_update(SetChosenSteammon (name));
             Table.remove draftpool name;
             draftRD := !draftRD +1;
@@ -49,6 +51,7 @@ let handle_step g ra ba =
             hash_to_list (Initialization.move_table), 
             hash_to_list(draftpool)))), None) 
       | Blue, true -> if sCred <= bcred then 
+            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Blue));
             add_update(SetChosenSteammon (name));
             Table.remove draftpool name;
             draftRD := !draftRD +1;
@@ -57,6 +60,7 @@ let handle_step g ra ba =
             hash_to_list (Initialization.move_table), 
             hash_to_list(draftpool)))), None) 
       | Blue, false -> if sCred <= bcred then 
+            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Blue));
             add_update(SetChosenSteammon (name));
             Table.remove draftpool name;
             draftRD := !draftRD + 1; 
