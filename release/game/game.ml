@@ -18,55 +18,48 @@ let game_from_data game_data = Game (game_data)
 let handle_step g ra ba = 
   
   (*TODO: Exception handling*)
+
+  let draftupdate name s c=
+    add_update(UpdateSteammon (name, s.curr_hp, s.max_hp, c)); 
+    add_update(SetChosenSteammon (name));
+    Table.remove draftpool name; 
+    draftRD := !draftRD + 1; ()
+  in
+
   let draft color ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
     if Table.mem draftpool name && (List.length rsl < 6 ||
       List.length bsl <6) then 
       let s = Table.find draftpool name in 
       let sCred = s.cost in 
-      let isOdd = (!draftRD mod 2 = 1) in 
-      match color, isOdd with 
-      | Red, true -> if sCred <= rcred then 
-            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Red));
-            add_update(Message ("a"));
-            add_update(SetChosenSteammon (name));
-            Table.remove draftpool name;
-            draftRD := !draftRD + 1; 
+      match color with 
+      | Red when ((!draftRD mod 2 = 1) && (sCred <= rcred)) -> 
+            draftupdate name s Red; 
             let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
-            (None, gsd, None,
-               Some(Request(PickRequest(Blue,gsd,
-        hash_to_list (Initialization.move_table), 
-        hash_to_list(draftpool))))) 
-      | Red, false -> if sCred <= rcred then 
-            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Red));
-            add_update(Message ("b"));
-            add_update(SetChosenSteammon (name));
-            Table.remove draftpool name;
-            draftRD := !draftRD +1;
+            (None, gsd, None, 
+              Some(Request(PickRequest(Blue,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+      | Red when ((!draftRD mod 2 = 0) && (sCred <= rcred)) ->
+            draftupdate name s Red;
             let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
             (None, gsd,Some(Request(PickRequest(Red,gsd,
             hash_to_list (Initialization.move_table), 
             hash_to_list(draftpool)))), None) 
-      | Blue, true -> if sCred <= bcred then 
-            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Blue));
-            add_update(Message ("c"));
-            add_update(SetChosenSteammon (name));
-            Table.remove draftpool name;
-            draftRD := !draftRD +1;
+      | Red -> failwith "todo"
+      | Blue when ((!draftRD mod 2 = 1) && (sCred <= bcred)) ->  
+            draftupdate name s Blue; 
             let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
             (None, gsd,Some(Request(PickRequest(Red,gsd,
             hash_to_list (Initialization.move_table), 
             hash_to_list(draftpool)))), None) 
-      | Blue, false -> if sCred <= bcred then 
-            add_update(UpdateSteammon (name,s.curr_hp,s.max_hp,Blue));
-            add_update(Message ("d"));
-            add_update(SetChosenSteammon (name));
-            Table.remove draftpool name;
-            draftRD := !draftRD + 1; 
+      | Blue when ((!draftRD mod 2 = 0) && (sCred <= bcred))-> 
+            draftupdate name s Blue;
             let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
             (None, gsd, None,
                Some(Request(PickRequest(Blue,gsd,
-        hash_to_list (Initialization.move_table), 
-        hash_to_list(draftpool))))) 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+      | Blue -> failwith "todo"
     else if (List.length rsl = 6 && List.length bsl = 6) then 
       let gsd = ((rsl,ri,rcred),(bsl,bi,bcred)) in 
       (None, gsd, Some(Request(PickInventoryRequest gsd)), 
