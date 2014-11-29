@@ -8,6 +8,7 @@ open Initialization
 type game = Game of game_status_data
 
 let draftRD = ref 1
+let draftpool = Initialization.mon_table 
 
 let game_datafication g = match g with 
   | Game x -> x 
@@ -24,54 +25,67 @@ let handle_step g ra ba =
         know the details well for that case
     *)
   let draft color ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
-    if Table.mem Initialization.mon_table name && (List.length rsl < 6 ||
+    if Table.mem draftpool name && (List.length rsl < 6 ||
       List.length bsl <6) then 
-      let s = Table.find Initialization.mon_table name in 
+      let s = Table.find draftpool name in 
       let sCred = s.cost in 
       let isOdd = (!draftRD mod 2 = 1) in 
       match color, isOdd with 
       | Red, true -> if sCred <= rcred then 
-            Table.remove Initialization.mon_table name;
+            add_update(SetChosenSteammon (name));
+            Table.remove draftpool name;
             draftRD := !draftRD + 1; 
             let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
             (None, gsd, None,
                Some(Request(PickRequest(Blue,gsd,
         hash_to_list (Initialization.move_table), 
-        hash_to_list(Initialization.mon_table))))) 
+        hash_to_list(draftpool))))) 
       | Red, false -> if sCred <= rcred then 
-            Table.remove Initialization.mon_table name;
+            add_update(SetChosenSteammon (name));
+            Table.remove draftpool name;
             draftRD := !draftRD +1;
             let gsd = (((s::rsl),ri,(rcred-sCred)), (bsl,bi,bcred)) in
             (None, gsd,Some(Request(PickRequest(Red,gsd,
             hash_to_list (Initialization.move_table), 
-            hash_to_list(Initialization.mon_table)))), None) 
+            hash_to_list(draftpool)))), None) 
       | Blue, true -> if sCred <= bcred then 
-            Table.remove Initialization.mon_table name;
+            add_update(SetChosenSteammon (name));
+            Table.remove draftpool name;
             draftRD := !draftRD +1;
             let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
             (None, gsd,Some(Request(PickRequest(Red,gsd,
             hash_to_list (Initialization.move_table), 
-            hash_to_list(Initialization.mon_table)))), None) 
+            hash_to_list(draftpool)))), None) 
       | Blue, false -> if sCred <= bcred then 
-            Table.remove Initialization.mon_table name;
+            add_update(SetChosenSteammon (name));
+            Table.remove draftpool name;
             draftRD := !draftRD + 1; 
             let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
             (None, gsd, None,
                Some(Request(PickRequest(Blue,gsd,
         hash_to_list (Initialization.move_table), 
-        hash_to_list(Initialization.mon_table))))) 
+        hash_to_list(draftpool))))) 
     else if (List.length rsl = 6 && List.length bsl = 6) then 
-      failwith "move onto inventory stage :')"
+      let gsd = ((rsl,ri,rcred),(bsl,bi,bcred)) in 
+      (None, gsd, Some(Request(PickInventoryRequest gsd)), 
+      Some(Request(PickInventoryRequest gsd))) 
     else failwith "meh"
   in
 
   match g, ra, ba with 
   | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) ->
+    add_update (InitGraphics (rName,bName));
+    if Random.int 2 = 0 then 
     (None, gsd, Some(Request(PickRequest(Red,gsd,
         hash_to_list (Initialization.move_table), 
-        hash_to_list(Initialization.mon_table)))), None)
+        hash_to_list(draftpool)))), None)
+    else (None, gsd, None, Some(Request(PickRequest(Blue,gsd,
+        hash_to_list (Initialization.move_table), 
+        hash_to_list(draftpool))))) 
   | Game gsd, Action(PickSteammon name), DoNothing -> draft Red gsd name
-  | Game gsd, DoNothing, Action(PickSteammon name) -> draft Blue gsd name  
+  | Game gsd, DoNothing, Action(PickSteammon name) -> draft Blue gsd name 
+  | Game gsd, Action(PickInventory (invlst1)), 
+    Action(PickInventory (invlst2))-> failwith "TODO"
   | _ -> failwith "swag"
 
  
@@ -80,4 +94,4 @@ let init_game () =
     (Game(([],[],cSTEAMMON_CREDITS),([],[],cSTEAMMON_CREDITS)),
         TeamNameRequest,TeamNameRequest, 
         hash_to_list (Initialization.move_table), 
-        hash_to_list(Initialization.mon_table))
+        hash_to_list(draftpool))
