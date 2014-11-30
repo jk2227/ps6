@@ -18,13 +18,19 @@ let game_from_data game_data = Game (game_data)
 let handle_step g ra ba = 
   
   (*TODO: Exception handling*)
-
   let draftupdate name s c=
     add_update(UpdateSteammon (name, s.curr_hp, s.max_hp, c)); 
     add_update(SetChosenSteammon (name));
     Table.remove draftpool name; 
     draftRD := !draftRD + 1; ()
   in
+
+  let findMin name s = 
+    Table.fold (fun k v (n,m) -> 
+        if v.cost < m.cost then (k,v) else (n,m))
+              draftpool (name,s) 
+
+   in
 
   let draft color ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
     if Table.mem draftpool name && (List.length rsl < 6 ||
@@ -45,7 +51,34 @@ let handle_step g ra ba =
             (None, gsd,Some(Request(PickRequest(Red,gsd,
             hash_to_list (Initialization.move_table), 
             hash_to_list(draftpool)))), None) 
-      | Red -> failwith "todo"
+      | Red when !draftRD mod 2  = 1-> let (n,m) = findMin name s in 
+        draftupdate n m Red ;
+        if m.cost > rcred then 
+         let gsd = (((m::rsl),ri,0), (bsl,bi,bcred)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Blue,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+        else  
+          let gsd = (((m::rsl),ri,(rcred-m.cost)), (bsl,bi,bcred)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Blue,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+      | Red -> let (n,m) = findMin name s in 
+        draftupdate n m Red ;
+        if m.cost > rcred then 
+         let gsd = (((m::rsl),ri,0), (bsl,bi,bcred)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Red,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+        else  
+          let gsd = (((m::rsl),ri,(rcred-m.cost)), (bsl,bi,bcred)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Red,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool)))))
       | Blue when ((!draftRD mod 2 = 1) && (sCred <= bcred)) ->  
             draftupdate name s Blue; 
             let gsd = ((rsl,ri,rcred), (s::bsl,bi,bcred-sCred)) in
@@ -59,11 +92,40 @@ let handle_step g ra ba =
                Some(Request(PickRequest(Blue,gsd,
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool))))) 
-      | Blue -> failwith "todo"
+      | Blue when !draftRD mod 2  = 1-> let (n,m) = findMin name s in 
+        draftupdate n m Blue;
+        if m.cost > bcred then 
+         let gsd = ((rsl,ri,rcred), (m::bsl,bi,0)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Red,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+        else  
+          let gsd = ((rsl,ri,(rcred)), (m::bsl,bi,bcred-m.cost)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Red,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+      | Blue -> let (n,m) = findMin name s in 
+        draftupdate n m Blue;
+        if m.cost > bcred then 
+         let gsd = ((rsl,ri,rcred), (m::bsl,bi,0)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Blue,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool)))))
+        else 
+          let gsd = ((rsl,ri,(rcred)), (m::bsl,bi,bcred-m.cost)) in
+            (None, gsd, None, 
+              Some(Request(PickRequest(Blue,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool)))))
+
     else if (List.length rsl = 6 && List.length bsl = 6) then 
       let gsd = ((rsl,ri,rcred),(bsl,bi,bcred)) in 
       (None, gsd, Some(Request(PickInventoryRequest gsd)), 
       Some(Request(PickInventoryRequest gsd))) 
+    
     else failwith "meh"
   in
 
@@ -97,7 +159,7 @@ let handle_step g ra ba =
 
   match g, ra, ba with 
   | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) ->
-    add_update (InitGraphics (rName,bName));
+    send_update (InitGraphics (rName,bName));
     if Random.int 2 = 0 then 
     (None, gsd, Some(Request(PickRequest(Red,gsd,
         hash_to_list (Initialization.move_table), 
@@ -113,8 +175,7 @@ let handle_step g ra ba =
     battle gsd rs bs 
   | _ -> failwith "swag"
 
- 
-let init_game () =
+ let init_game () =
     init_pool ("moves.csv") ("steammon.csv");
     (Game(([],[],cSTEAMMON_CREDITS),([],[],cSTEAMMON_CREDITS)),
         TeamNameRequest,TeamNameRequest, 
