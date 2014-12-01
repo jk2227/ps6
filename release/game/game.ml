@@ -27,9 +27,6 @@ let handle_step g ra ba =
 
   let draftupdate name s c=
     add_update(UpdateSteammon (name, s.curr_hp, s.max_hp, c)); 
-    add_update(SetChosenSteammon (name));
-    let temp = string_of_int !draftRD in
-    add_update(Message temp);
     Table.remove draftpool name; 
     draftRD := !draftRD + 1; ()
   in
