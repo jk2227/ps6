@@ -1,6 +1,7 @@
 open Team
 open Definitions
 open Constants
+open Botutils
 
 (* Attention Student:
  * Do not change the arguments of handle_request. However, feel free to change 
@@ -36,22 +37,19 @@ let handle_request (c : color) (r : request) : action =
          | [] -> failwith "no steammon to pick!")
     | ActionRequest (gr) ->
         let (a1, b1) = gr in
-        let my_team = if c = Red then a1 else b1 in
+        let (my_team, their_team) = if c = Red then (a1, b1) else (b1, a1) in
         let (mons, pack, credits) = my_team in
-        (match mons with
-        | h::t ->
-            if (h.first_move).pp_remaining >0 then
-              let _ = print_endline (h.species ^ "used " ^ ((h.first_move).name)) in
-                UseMove((h.first_move).name)
-            else if ((h.second_move).pp_remaining > 0) then
-              let _ = print_endline (h.species ^ "used " ^ ((h.second_move).name)) in
-                UseMove((h.second_move).name)
-            else if ((h.third_move).pp_remaining >0) then
-              let _ = print_endline (h.species ^ "used " ^ ((h.third_move).name)) in
-                UseMove((h.third_move).name)
+        let (theirmons, _, _) = their_team in
+        (match (mons, theirmons) with
+        | (myActive::inactive, theirActive::theirInactive) ->
+          let bestSmForJob = Botutils.bestSm mons theirActive in
+            if (battleTurnout myActive theirActive) < 0
+            then SwitchSteammon bestSmForJob.species
             else
-              let _ = print_endline (h.species ^ "used " ^ ((h.fourth_move).name)) in
-                UseMove((h.fourth_move).name)
+            (*Todo, account for everyone is bad*)
+              if (not (myActive = bestSmForJob) && battleTurnout myActive bestSmForJob - battleTurnout myActive theirActive > 2)
+              then SwitchSteammon bestSmForJob.species
+              else UseMove (Botutils.bestMv myActive theirActive).name
         | _ -> failwith "WHAT IN THE NAME OF ZARDOZ HAPPENED HERE")
     (* Pick all revives, maxpot, fullheal, xatk, xspd, xdef, ether *)
 	 | PickInventoryRequest (gr) -> 
