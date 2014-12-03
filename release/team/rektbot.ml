@@ -11,7 +11,15 @@ open Botutils
 (* Change this to the name of your bot. *)
 let name = "rekt" 
 
+let firstTime = ref 0
+
 let _ = Random.self_init ()
+let calcScore (myMon:steammon) (tgtMon:steammon):int = (* returns multiplier *)
+            List.fold_left (fun acc e -> 
+              acc+ceil(snd(Util.calculate_type_matchup e 
+              (myMon.first_type,myMon.second_type))))
+            0 [tgtMon.first_move.element;tgtMon.second_move.element;
+            tgtMon.third_move.element;tgtMon.fourth_move.element]
 
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
@@ -45,7 +53,8 @@ let handle_request (c : color) (r : request) : action =
         in let pick = if c = Red
         then findWeakest mons1 mons2 (List.hd mons1)
         else findWeakest mons2 mons1 (List.hd mons2)
-    | PickRequest(c, gsd, _, sp) ->
+      in SelectStarter (pick.species)
+    | PickRequest (c, gsd, _, sp) ->
         let rec rater (mon:steammon) (pool:steammon list) 
         (acc:int*steammon):int*steammon =
           match pool with
@@ -98,7 +107,7 @@ let handle_request (c : color) (r : request) : action =
                     then isCommon mon t tru+1
                     else isCommon mon t tru
         in
-        let filterPool (comLst:type list) (acc:steammon list):steammon list =
+        let filterPool (comLst:steamtype list) (acc:steammon list):steammon list =
           List.filter (fun e -> (isCommon e comLst 0) > 0) sp
         in
         let (a1,b1) = gsd in
