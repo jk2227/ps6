@@ -13,7 +13,7 @@ type andy = {
   mutable bp: steammon list;
   mutable rinv: int list;
   mutable binv: int list;
-  credits: int*int
+  mutable credits: int*int
 }
 let init = ref 1
 let drafting = ref 0
@@ -24,6 +24,21 @@ let draftColor = ref Red
 let draftpool = Initialization.mon_table 
 let movepool = Initialization.move_table
 let first = ref Red
+let dummymove = {name=" "; element=Typeless; target=User; max_pp=0; pp_remaining=0; power=0; accuracy=0;effects=None}
+let no_mods = {attack_mod=0; defense_mod=0; spl_attack_mod=0; spl_defense_mod=0; speed_mod=0}
+let dummymon = {species="dummy"; curr_hp=0; max_hp=0; first_type=None; second_type=None;
+                first_move=dummymove; second_move=dummymove; third_move=dummymove;
+                fourth_move=dummymove; attack=0; spl_attack=0; defense=0; spl_defense=0;
+                speed=0; status=None; mods=no_mods; cost=0}
+let data = {
+  ra=dummymon;
+  ba=dummymon;
+  rp=[];
+  bp=[];
+  rinv=[];
+  binv=[];
+  credits=(31,10)
+}
 type move_result_mut = {
   mutable name: string;
   mutable element: steamtype;
@@ -38,19 +53,17 @@ type move_result_mut = {
 let result = {name="wumpus"; element=Typeless; from=Red; toward=Blue;
               damage=0; hit=Hit; effectiveness=Regular; effects=[]; dummy=0}
 
-let game_to_andy g : andy =
+let copy_game_to_data g data : unit =
   let Game gsd = g in
   let (rtd, btd) = gsd in
   let (rsl, ri, rc ) = rtd and (bsl, bi, bc ) = btd in
-  { 
-    ra=(List.hd rsl);
-    ba=(List.hd bsl);
-    rp=(List.tl rsl);
-    bp=(List.tl bsl);
-    rinv=ri;
-    binv=bi;
-    credits = (rc, bc)
-  }
+  data.ra <- (List.hd rsl);
+  data.ba <- (List.hd bsl);
+  data.rp <- (List.tl rsl);
+  data.bp <- (List.tl bsl);
+  data.rinv <- ri;
+  data.binv <- bi;
+  data.credits <- (rc, bc)
 
 let andy_to_gsd a : game_status_data =
   let rtd = (a.ra::a.rp, a.rinv, fst a.credits)
@@ -636,6 +649,8 @@ let handle_step g ra ba =
   (*called if either steammon has fainted. does end-of-turn status effects on
     any alive steammon and returns the appropriate game_output *)
   let rec faint_response data (rs, bs) : game_output =
+    add_update(UpdateSteammon (rs.species, rs.curr_hp, rs.max_hp, Red));
+    add_update(UpdateSteammon (bs.species, bs.curr_hp, bs.max_hp, Blue));
     match rs.curr_hp , bs.curr_hp with 
     | 0 , 0 -> let gsd = andy_to_gsd data in 
       (None, gsd, Some (Request (StarterRequest gsd)), Some ( Request(StarterRequest gsd)))
@@ -658,6 +673,8 @@ let handle_step g ra ba =
     let rs' = status_end rs Red and bs' = status_end bs Blue in
     data.ra <- rs';
     data.ba <- bs';
+    add_update(UpdateSteammon (rs'.species, rs'.curr_hp, rs'.max_hp, Red));
+    add_update(UpdateSteammon (bs'.species, bs'.curr_hp, bs'.max_hp, Blue));
     let gsd = andy_to_gsd data in
     match rs'.curr_hp , bs'.curr_hp with
     | 0 , 0 -> (None, gsd, Some (Request(StarterRequest gsd)), Some (Request(StarterRequest gsd)))
@@ -665,10 +682,12 @@ let handle_step g ra ba =
     | _ , 0 -> (None, gsd, None, Some (Request(StarterRequest gsd)))
     | _ , _ -> (None, gsd, Some (Request(ActionRequest gsd)), Some (Request(ActionRequest gsd))) in
 
-  let data = game_to_andy g in
   if !battling = 1 then 
+    copy_game_to_data g data;
     first := first_action data.ra data.ba;
     add_update (SetFirstAttacker !first);
+    data.ra <- status_recover data.ra Red;
+    data.ba <- status_recover data.ba Blue;
 
   match g, ra, ba with 
   | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) ->
@@ -806,6 +825,10 @@ let handle_step g ra ba =
     alive_response data (data.ra, data.ba)
 
   | Game gsd, DoNothing, DoNothing -> exception_handle gsd 
+  | Game gsd, DoNothing, Action (SelectStarter bs) ->
+      switch_in bs Blue data; alive_response data (data.ra, data.ba)
+  | Game gsd, Action (SelectStarter rs), DoNothing ->
+      switch_in rs Red data; alive_response data (data.ra, data.ba)
   | _ -> failwith "swag"
 
 
