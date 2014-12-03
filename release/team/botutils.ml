@@ -45,12 +45,15 @@ let turnsToLive (defender: steammon) (attacker : steammon) : int =
   in 1 + defender.curr_hp / maxDPT
 
 let battleTurnout (s1: steammon) (s2: steammon) : int = 
-  let (s1Life,s2Life) =  (turnsToLive s1 s2, turnsToLive s2 s1) in
+  let (s1Life,s2Life) = (turnsToLive s1 s2, turnsToLive s2 s1) in
   if s1Life = s2Life then
     if s1.speed = s2.speed then 0 else
     if s1.speed < s2.speed then -1 else 1 
   else
    s1Life - s2Life
+
+let postRevive (s: steammon) = 
+  {s with curr_hp = s.max_hp/2}
 
 let greaterStat (one : int * 'a) (two : int * 'a) =
   let ((s1,sm1),(s2,sm2)) = (one, two) in s1 - s2
@@ -87,3 +90,11 @@ let mostSurvSm (smlst: steammon list) (s: steammon) : steammon list =
 
 let fastestKiller (smlst: steammon list) (s: steammon) : steammon list = 
   extractThing (List.sort greaterStat (pairStat (fun x -> fst (bestMvWithDmg x s)) smlst))
+
+let rec firstLiving (smlst: steammon list) = 
+  match smlst with 
+  | h::t -> if (h.curr_hp > 0) then h else firstLiving t
+  | [] -> failwith "this should really never happen"
+
+let numLiving (smlst: steammon list) =
+  List.fold_left (fun a e -> if e.curr_hp > 0 then a+1 else a) 0 smlst
