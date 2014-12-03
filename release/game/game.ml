@@ -16,7 +16,7 @@ let draftpool = Initialization.mon_table
 
 let game_datafication g = match g with 
   | Game x -> x 
-	
+  
 let game_from_data game_data = Game (game_data)
 
 let handle_step g ra ba = 
