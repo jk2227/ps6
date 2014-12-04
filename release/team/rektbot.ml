@@ -13,7 +13,7 @@ let name = "rekt"
 
 let firstTime = ref 0
 
-let _ = Random.self_init ()
+let _ = Random.self_init () 
 let calcScore (myMon:steammon) (tgtMon:steammon):int = (* returns multiplier *)
             List.fold_left (fun acc e -> 
               acc+int_of_float(snd(Util.calculate_type_matchup e 
@@ -102,6 +102,8 @@ let filterPool (comLst:steamtype list) (acc:steammon list)
 (pool:steammon list):steammon list =
           List.filter (fun e -> (isCommon e comLst 0) > 0) pool
 
+let otherTeam:steammon list ref = ref [] 
+
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
 let handle_request (c : color) (r : request) : action =
@@ -135,6 +137,8 @@ let handle_request (c : color) (r : request) : action =
         let (theirmons, _, _) = their_team in
         (match (mons, theirmons) with
         | (myActive::inactive, theirActive::theirInactive) ->
+          Botutils.survivableMK1 myActive inactive theirActive pack
+        (*
           let bestSmForJob = Botutils.bestSm mons theirActive in
             if (battleTurnout myActive theirActive) < 0
             then SwitchSteammon bestSmForJob.species
@@ -142,7 +146,7 @@ let handle_request (c : color) (r : request) : action =
             (*Todo, account for everyone is bad*)
               if (not (myActive = bestSmForJob) && battleTurnout myActive bestSmForJob - battleTurnout myActive theirActive > 2)
               then SwitchSteammon bestSmForJob.species
-              else UseMove (Botutils.bestMv myActive theirActive).name
+              else UseMove (Botutils.bestMv myActive theirActive).name*)
         | _ -> failwith "WHAT IN THE NAME OF ZARDOZ HAPPENED HERE")
     (* Pick all revives, maxpot, fullheal, xatk, xspd, xdef, ether *)
 	 | PickInventoryRequest (gr) -> 
