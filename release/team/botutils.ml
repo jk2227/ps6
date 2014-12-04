@@ -132,5 +132,3 @@ let survivableMK1 (meActive:steammon) (meReserve:steammon list) (them:steammon) 
                       else if h3 then UseItem (Revive, h2.species)
                       else SwitchSteammon h2.species
   | [] -> failwith "impossible case encountered"
-
-let move
