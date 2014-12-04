@@ -77,6 +77,12 @@ let bestMvWithDmg (attacker: steammon) (defender: steammon) =
 
 let bestMv x y = snd (bestMvWithDmg x y)
 
+let orderDescBy (smlst: steammon list) (f: steammon -> int) : steammon list =
+  extractThing (List.sort greaterStat (pairStat f smlst))
+
+let genSteammonOrderBy (slst: steammon list) =
+  orderDescBy slst
+
 let bestSmOrder (smlst: steammon list) (s: steammon) : steammon list =
   extractThing (List.sort greaterStat (pairStat (fun x -> battleTurnout x s) smlst))
 
@@ -85,11 +91,15 @@ let bestSm (smlst: steammon list) (s: steammon) : steammon =
   | h::t -> h
   | _ -> failwith "Something bad happened"
 
+let mostSurvSmWithShiftAndDeath (smlst: (int*steammon*bool) list) (s: steammon) : (int*steammon*bool) list= 
+  extractThing (List.sort greaterStat (pairStat (fun (a,b,_) -> a + turnsToLive b s) smlst))
+
 let mostSurvSm (smlst: steammon list) (s: steammon) : steammon list = 
-  extractThing (List.sort greaterStat (pairStat (fun x -> turnsToLive x s) smlst))
+  List.map (fun (_,x,_) -> x) (mostSurvSmWithShiftAndDeath (List.map (fun x -> (0, x, true)) smlst) s)
 
 let fastestKiller (smlst: steammon list) (s: steammon) : steammon list = 
   extractThing (List.sort greaterStat (pairStat (fun x -> fst (bestMvWithDmg x s)) smlst))
+
 
 let rec firstLiving (smlst: steammon list) = 
   match smlst with 
@@ -98,3 +108,27 @@ let rec firstLiving (smlst: steammon list) =
 
 let numLiving (smlst: steammon list) =
   List.fold_left (fun a e -> if e.curr_hp > 0 then a+1 else a) 0 smlst
+
+(*let pickingRanker (centralCost: int) : steammon -> steammon -> int = 
+  fun me them ->
+    let costDiff = abs (sm.cost - centralCost) in 
+    let battleTurnout*)
+(* BOT STRATEGIES *)
+(* PICK STEAMMON THAT CAN SURVIVE MOST MINDLESS PUMMELING *)
+let survivableMK1 (meActive:steammon) (meReserve:steammon list) (them:steammon) (inv:inventory) = 
+  let hasRevive = match inv with 
+    | _::_::r::_ -> r > 0
+    | _ -> false
+  in 
+  let monList = match hasRevive with
+    | true -> List.map (fun sm -> if sm.curr_hp = 0 
+                                  then (-3,{sm with curr_hp = sm.max_hp / 2},true)
+                                  else (-2,sm, false)) meReserve
+    | false -> List.map (fun x -> (-2, x, false)) (List.filter (fun sm -> sm.curr_hp > 0) meReserve)
+  in
+  let rankedBySurv = mostSurvSmWithShiftAndDeath ((0,meActive,false)::monList) them in
+  match rankedBySurv with 
+  | (_,h2,h3)::t -> if (h2 = meActive) then UseMove (bestMv meActive them).name
+                      else if h3 then UseItem (Revive, h2.species)
+                      else SwitchSteammon h2.species
+  | [] -> failwith "impossible case encountered"
