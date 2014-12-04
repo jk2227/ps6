@@ -77,11 +77,11 @@ let bestMvWithDmg (attacker: steammon) (defender: steammon) =
 
 let bestMv x y = snd (bestMvWithDmg x y)
 
-let orderDescBy (smlst: steammon list) (s: steammon) (f: steammon -> int) : steammon list =
+let orderDescBy (smlst: steammon list) (f: steammon -> int) : steammon list =
   extractThing (List.sort greaterStat (pairStat f smlst))
 
-let genSteammonOrderBy (slst: steammon list) (s: steammon) =
-  orderDescBy slst s
+let genSteammonOrderBy (slst: steammon list) =
+  orderDescBy slst
 
 let bestSmOrder (smlst: steammon list) (s: steammon) : steammon list =
   extractThing (List.sort greaterStat (pairStat (fun x -> battleTurnout x s) smlst))
