@@ -233,6 +233,16 @@ let pickReq1 c gsd sp =
             oppTeam := (List.hd newMons)::(!oppTeam);
             PickSteammon (pick.species)
 
+let startReq c gs =
+  let (mons1,_,_),(mons2,_,_) = gs in
+    if c = Red
+    then let pick = List.fold_left 
+    (fun acc e -> Botutils.bestSm mons1 (List.hd mons2)) mons1 in
+      SelectStarter (pick.species)
+    else let pick = List.fold_left 
+    (fun acc e -> Botutils.bestSm mons2 (List.hd mons1)) mons2 in
+      SelectStarter (pick.species)
+
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
 let handle_request (c : color) (r : request) : action =
@@ -241,7 +251,7 @@ let handle_request (c : color) (r : request) : action =
     | TeamNameRequest -> SendTeamName(name)
     (* starter pokemon or pokemon replacement. when starting calculate highest expected *)
     | StarterRequest(gs)-> 
-        let ((mons1,_,_),(mons2,_,_)) = gs in
+        (*let ((mons1,_,_),(mons2,_,_)) = gs in
         if !firstTime = 1 then
         let pick = if c = Red 
         then findTheVeryBest mons1 (List.hd mons1) (List.hd mons2)
@@ -251,7 +261,8 @@ let handle_request (c : color) (r : request) : action =
         let pick = if c = Red
         then findWeakest mons1 mons2 (List.hd mons1)
         else findWeakest mons2 mons1 (List.hd mons2)
-      in firstTime := 1; SelectStarter (pick.species)
+      in firstTime := 1; SelectStarter (pick.species)*)
+      startReq c gs
     | PickRequest (c, gsd, _, sp) ->
           pickReq1 c gsd sp
           (*tankPick c gsd sp*)
