@@ -190,7 +190,7 @@ let makeTheMostOf (pool:steammon list) (creds:int):steammon =
   List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
     && (e.cost<creds) then e else acc) (List.hd pool) pool
 
-let tankPick c gsd pool = 
+(*let tankPick c gsd pool = 
   let ((_,_,cr),(_,_,cb)) = gsd in
   let rc = if c = Red then cr else cb in 
   let tanks = Botutils.orderDescBy pool 
@@ -198,7 +198,7 @@ let tankPick c gsd pool =
   let potatoes = List.filter 
   (fun a -> a.cost <= min rc cSTEAMMON_CREDITS/(cNUM_PICKS-2)) tanks in
   let pick = List.hd potatoes in
-    PickSteammon (pick.species)
+    PickSteammon (pick.species)*)
 
 (*let strikerPick c gsd pool =
   let strikers = Botutils.orderDescBy pool
@@ -226,7 +226,6 @@ let pickReq1 c gsd sp =
             let newMons = getNewMons (!oppTeam) (getUpdatedTeam mons) [] in
             if List.length(newMons) = 0 then
             let pick = firstPick sp in
-            oppTeam := (List.hd newMons)::(!oppTeam);
             PickSteammon (pick.species)
             else
             let pick = handleSingleDraft (List.hd newMons) sp in
