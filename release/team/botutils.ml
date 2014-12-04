@@ -56,7 +56,7 @@ let postRevive (s: steammon) =
   {s with curr_hp = s.max_hp/2}
 
 let greaterStat (one : int * 'a) (two : int * 'a) =
-  let ((s1,sm1),(s2,sm2)) = (one, two) in s1 - s2
+  let ((s1,sm1),(s2,sm2)) = (one, two) in s2 - s1
 
 let pairStat (statFunc : 'a -> int) (smlst: 'a list) = 
   List.map (fun x -> (statFunc x, x)) smlst
