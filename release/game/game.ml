@@ -894,7 +894,6 @@ let handle_step g ra ba =
       switch_in rs Red data; alive_response data (data.ra, data.ba)
   | _ -> failwith "swag"
 
-
 let init_game () =
   init_pool ("moves.csv") ("steammon.csv");
   (Game(([],[],cSTEAMMON_CREDITS),([],[],cSTEAMMON_CREDITS)),
