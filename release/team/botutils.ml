@@ -42,7 +42,7 @@ let turnsToLive (defender: steammon) (attacker : steammon) : int =
   in
   let maxDPT = 
     List.fold_left max 0 (List.map (finalDmg defender attacker) attackermoves)
-  in 1 + defender.curr_hp / maxDPT
+  in 1 + if maxDPT = 0 then 99999 else defender.curr_hp / maxDPT
 
 let battleTurnout (s1: steammon) (s2: steammon) : int = 
   let (s1Life,s2Life) = (turnsToLive s1 s2, turnsToLive s2 s1) in
@@ -77,11 +77,11 @@ let bestMvWithDmg (attacker: steammon) (defender: steammon) =
 
 let bestMv x y = snd (bestMvWithDmg x y)
 
-let orderDescBy (smlst: steammon list) (f: steammon -> int) : steammon list =
+let orderDescBy (smlst: steammon list) (s: steammon) (f: steammon -> int) : steammon list =
   extractThing (List.sort greaterStat (pairStat f smlst))
 
-let genSteammonOrderBy (slst: steammon list) =
-  orderDescBy slst
+let genSteammonOrderBy (slst: steammon list) (s: steammon) =
+  orderDescBy slst s
 
 let bestSmOrder (smlst: steammon list) (s: steammon) : steammon list =
   extractThing (List.sort greaterStat (pairStat (fun x -> battleTurnout x s) smlst))
@@ -132,3 +132,5 @@ let survivableMK1 (meActive:steammon) (meReserve:steammon list) (them:steammon) 
                       else if h3 then UseItem (Revive, h2.species)
                       else SwitchSteammon h2.species
   | [] -> failwith "impossible case encountered"
+
+let move
