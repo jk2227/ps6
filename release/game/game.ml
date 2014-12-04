@@ -486,10 +486,11 @@ let handle_step g ra ba =
     let struggle = Table.find movepool "Struggle" in
     match mon.status, get_move_from_steammon mon move_name with
     | _ , None -> None
-    | Some Asleep, _ -> None
-    | Some Frozen, _ -> None
+    | Some Asleep, _ -> result.hit <- Failed Asleep; None
+    | Some Frozen, _ -> result.hit <- Failed Frozen; None
     | Some Paralyzed, Some m -> 
-        if (Random.int 100 + 1) <= cPARALYSIS_CHANCE then None
+        if (Random.int 100 + 1) <= cPARALYSIS_CHANCE then begin
+          result.hit <- Failed Paralyzed; None end
         else if m.pp_remaining < 1 then Some struggle 
              else Some m
     | Some Confused, Some m -> 
@@ -548,11 +549,21 @@ let handle_step g ra ba =
       let alter_stage old_stage add =
         if i > 0 then min 6 (old_stage + add) else max (-6) (old_stage + add) in
       match stt with
-      | Atk -> {mods with attack_mod = alter_stage mods.attack_mod i}
-      | Def -> {mods with defense_mod = alter_stage mods.defense_mod i}
-      | SpA -> {mods with spl_attack_mod = alter_stage mods.spl_attack_mod i}
-      | SpD -> {mods with spl_defense_mod = alter_stage mods.spl_defense_mod i}
-      | Spe -> {mods with speed_mod = alter_stage mods.speed_mod i} in
+      | Atk -> let a = alter_stage mods.attack_mod i in
+          result.effects <- result.effects@[(StatModified(Atk, a - mods.attack_mod), color)];
+          {mods with attack_mod = a}
+      | Def -> let d = alter_stage mods.defense_mod i in
+          result.effects <- result.effects@[(StatModified(Def, d - mods.defense_mod), color)];
+          {mods with defense_mod = d}
+      | SpA -> let sa = alter_stage mods.spl_attack_mod i in 
+          result.effects <- result.effects@[(StatModified(SpA, sa - mods.spl_attack_mod), color)];
+          {mods with spl_attack_mod = sa}
+      | SpD -> let sd = alter_stage mods.spl_defense_mod i in
+          result.effects <- result.effects@[(StatModified(SpD, sd - mods.spl_defense_mod), color)];
+          {mods with spl_defense_mod = sd}
+      | Spe -> let sp = alter_stage mods.speed_mod i in
+          result.effects <- result.effects@[(StatModified(Spe, sp - mods.speed_mod), color)];
+          {mods with speed_mod = sp} in
 
     (*increments the remaining pp of the given move and returns the altered
       move. pp_remaining cannot go over max_pp. *)
@@ -561,9 +572,11 @@ let handle_step g ra ba =
 
     (*performs a single effect on a steammon and returns the altered steammon.*)
     let single_effect (t: steammon) eff : steammon =
-      if t.status = None then t else
+      add_update(Message "doing an effect");
       match eff with
       | InflictStatus s -> 
+          add_update(Message "status inflicted");
+          if t.status != None then t else 
           if (s = Asleep && sleep_clause color data) || (s = Frozen && freeze_clause color data) then
             t
           else begin
@@ -629,21 +642,21 @@ let handle_step g ra ba =
   let perform_move move_name (rs, bs) attacker data : unit =
     let dmg_and_effects (user, opp) move : steammon*steammon =
       match move.target with
-      | User -> let dmg = move_dmg move user user in
+      | User -> let dmg = min (move_dmg move user user) user.curr_hp in
         let matchup = calculate_type_matchup move.element (user.first_type, user.second_type) in
-        result.damage <- min dmg user.curr_hp;
+        result.damage <- dmg;
         result.effectiveness <- (fst matchup);
-        if dmg >= user.curr_hp then ({user with curr_hp = 0}, opp) else begin
+        if dmg = user.curr_hp then ({user with curr_hp = 0}, opp) else begin
           let user' = {user with curr_hp = user.curr_hp - dmg} in
           match move.effects with
           | None -> (user', opp)
           | Some eff -> move_effects eff (user', opp) dmg attacker data
         end   
-      | Opponent -> let dmg = move_dmg move user opp in
+      | Opponent -> let dmg = min (move_dmg move user opp) opp.curr_hp in
         let matchup = calculate_type_matchup move.element (opp.first_type, opp.second_type) in
-        result.damage <- min dmg user.curr_hp;
+        result.damage <- dmg;
         result.effectiveness <- (fst matchup);
-        if dmg >= opp.curr_hp then (user, {opp with curr_hp = 0}) else begin
+        if dmg = opp.curr_hp then (user, {opp with curr_hp = 0}) else begin
           let opp' = {opp with curr_hp = opp.curr_hp - dmg} in
           match move.effects with
           | None -> (user, opp')
@@ -652,7 +665,15 @@ let handle_step g ra ba =
 
     let move_helper (user, opp) : steammon*steammon =
       match move_occur user move_name with
-      | None -> (user, opp)
+      | None -> 
+          result.name <- "No attack.";
+          result.element <- Typeless;
+          result.from <- attacker;
+          result.toward <- invert_color attacker;
+          result.damage <- 0;
+          result.effectiveness <- Regular;
+          result.effects <- [];
+          (user, opp)
       | Some move when (move_hit move) -> 
           reduce_pp move attacker data;
           result.name <- move.name;
@@ -729,12 +750,16 @@ let handle_step g ra ba =
     | _ , 0 -> (None, gsd, None, Some (Request(StarterRequest gsd)))
     | _ , _ -> (None, gsd, Some (Request(ActionRequest gsd)), Some (Request(ActionRequest gsd))) in
 
-  if !battling = 1 then 
+  let pre_battle_phase () : unit =
     copy_game_to_data g data;
     first := first_action data.ra data.ba;
     add_update (SetFirstAttacker !first);
     data.ra <- status_recover data.ra Red;
     data.ba <- status_recover data.ba Blue;
+    add_update(UpdateSteammon (data.ra.species, data.ra.curr_hp, data.ra.max_hp, Red));
+    add_update(UpdateSteammon (data.ba.species, data.ba.curr_hp, data.ba.max_hp, Blue)) in
+
+  (if !battling = 1 then pre_battle_phase ());
 
   match g, ra, ba with 
   | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) ->
