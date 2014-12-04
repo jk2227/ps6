@@ -154,23 +154,23 @@ let handleSingleDraft (s:steammon) (pool:steammon list):steammon=
   minCostDiffMon okMons s
 
 let handleCoupleDraft (sl:steammon list) (pool:steammon list):steammon=
-  match (sl,pool) with
-  | (h::h2::t,hd::tl) -> let first = List.fold_left 
+  match sl with
+  | h::h2::t -> let first = List.fold_left 
   (fun acc e -> handleSingleDraft h pool) h sl in
-  let second = List.fold_left (fun acc e -> handleSingleDraft h2 tl) 
-  h2 tl in
+  let second = List.fold_left (fun acc e -> handleSingleDraft h2 pool) 
+  h2 t in
   firstPick [first;second] []
   | _ -> failwith "wtf happened here"
 
 let smartPick (theirNew:steammon list) (pool:steammon list):steammon=
   match theirNew with
-  | [h] -> handleSingleDraft h pool
-  | h::t -> handleCoupleDraft theirNew pool
+  | h::t -> handleSingleDraft h pool
   | _ -> failwith "how did they not draft anything???"
 
 let makeTheMostOf (pool:steammon list) (creds:int):steammon =
-  List.fold_left (fun acc e -> if creds-e.cost < creds-acc.cost then 
-  e else acc) (List.hd pool) pool
+  let s = List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
+    && (e.cost<creds) then e else acc) (List.hd pool) pool in
+  failwith ((string_of_int creds) ^","^ (string_of_int s.cost) ^","^ s.species)
 
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
@@ -192,16 +192,9 @@ let handle_request (c : color) (r : request) : action =
         else findWeakest mons2 mons1 (List.hd mons2)
       in firstTime := 1; SelectStarter (pick.species)
     | PickRequest (c, gsd, _, sp) ->
-      (*let (a1,b1) = gsd in
-        let myteam = if c = Red then a1 else b1 in
-        let (mons,invo,creds) = myteam in
-        (* something could go wrong with the .hd here T^T *)
-        let x = filterPool (mostCommon mons [] 0) [] sp in
-        let pick = match x with
-        | [] -> failwith "filterpool returned empty"
-        | h::t -> h
-        in PickSteammon (pick.species)*)
-        if List.length(!oppTeam) = 0 then (*you get first pick*)
+          let opp = if c = Red then snd gsd else fst gsd in
+          let (monz,_,_) = opp in
+        if List.length(monz) = 0 then (*you get first pick*)
           let pick = firstPick sp [] in
           PickSteammon (pick.species)
         else
@@ -210,14 +203,15 @@ let handle_request (c : color) (r : request) : action =
           oppTeam := mons;
           let myTeam = if c = Red then fst gsd else snd gsd in
           let (myMons,_,creds) = myTeam in
-          if List.length (myMons) = cNUM_PICKS-1 then
+          if List.length (myMons) >= cNUM_PICKS-1 then
             (* last mon,draft the most expensive u can afford *)
             let pick = makeTheMostOf sp creds in
                 PickSteammon (pick.species)
           else
-            let newMons = getNewMons (!oppTeam) (getUpdatedTeam mons) 
-            [] in
-            let pick = smartPick newMons sp in
+            let newMons = getNewMons (!oppTeam) (getUpdatedTeam mons) [] in
+            
+            let pick = handleSingleDraft (List.hd newMons) sp in
+            oppTeam := (List.hd newMons)::(!oppTeam);
             PickSteammon (pick.species)
     | ActionRequest (gr) ->
         let (a1, b1) = gr in
