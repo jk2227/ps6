@@ -278,19 +278,16 @@ let handle_step g ra ba =
   (*require: game status data*)
   (*returns: a proper game status data*)
   let exception_handle gsd = 
-    if !state = Init then 
-        initialize gsd "Red" "Blue"
-    else if !state = Drafting then begin
-      let s = findMin () in draft gsd s.species 
-      end
-    else if !state = Inventory then 
-      inventory gsd [] [] true true 
-    else if !state = Battle then begin
-      battle_error := true;
+    match !state with 
+    | Init -> initialize gsd "Red" "Blue" 
+    | Drafting -> let s = findMin () in draft gsd s.species
+    | Inventory -> inventory gsd [] [] true true 
+    | Battle -> begin 
+      battle_error := true; 
       (None, gsd, Some (Request(ActionRequest gsd)), 
         Some (Request(ActionRequest gsd)))
     end
-    else if !state = BattleSelect then begin
+    | BattleSelect -> begin 
       if data.ra.curr_hp = 0 && data.ba.curr_hp = 0 then
         (None, gsd, Some (Request(StarterRequest gsd)), 
           Some (Request(StarterRequest gsd)))
@@ -298,7 +295,7 @@ let handle_step g ra ba =
         (None, gsd, Some (Request(StarterRequest gsd)), None)
       else
         (None, gsd, None, Some (Request(StarterRequest gsd))) end
-    else failwith "Something went really wrong."
+    | _ -> failwith "Something went really wrong..."
   in 
 
   let rec get_mon lst name : steammon option =
