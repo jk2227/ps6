@@ -36,7 +36,7 @@ let rec findWeakest (myMons:steammon list)
         | h::t -> let wk = List.fold_left (fun acc e -> 
         if calcScore h e < calcScore weakest e then h else weakest) 
         weakest oppMons in findWeakest t oppMons wk
-
+(*
 let rec rater (mon:steammon) (pool:steammon list) 
         (acc:int*steammon):int*steammon =
           match pool with
@@ -100,7 +100,39 @@ let rec isCommon (mon:steammon) (lst:steamtype list)
 
 let filterPool (comLst:steamtype list) (acc:steammon list) 
 (pool:steammon list):steammon list =
-          List.filter (fun e -> (isCommon e comLst 0) > 0) pool
+          List.filter (fun e -> (isCommon e comLst 0) > 0) pool*)
+
+let oppTeam = ref []
+
+let rec getNewMons (old:steammon list) (current:steammon list) 
+(return:steammon list):steammon list =
+  match current with 
+  | [] -> return
+  | h::t -> getNewMons old t (List.fold_left 
+    (fun acc e -> if e.species <> h.species then e::acc else acc) 
+  return old)
+
+let getAvgCost (pool:steammon list):int=
+  let total_cost = List.fold_left (fun acc e -> acc+e.cost) 0 pool in
+  int_of_float(float_of_int (total_cost)/.
+    float_of_int(List.length pool))
+
+let isWithinCostRange (cost:int) (otherCost:int):bool = 
+  abs(cost-otherCost) > 10
+
+let firstPick (pool:steammon list) (values:int list):steammon =
+  let evaluate (s:steammon):int =
+    let moves = [s.first_move;s.second_move;s.third_move;s.fourth_move] in
+    List.fold_left (fun acc e -> acc+(int_of_float(float_of_int (e.power)*.
+      float_of_int(e.accuracy)/.100.))) 0 moves
+  in
+  let sortedMons = Botutils.extractThing(List.sort Botutils.greaterStat 
+    (Botutils.pairStat (fun mon -> evaluate mon) pool)) in
+  let suitablyPriceMons = List.filter (fun a -> isWithinCostRange 
+    (a.cost) (getAvgCost pool)) sortedMons in
+  match suitablyPriceMons with
+  | [] -> failwith "something wrong happened???"
+  | h::t -> h
 
 let otherTeam:steammon list ref = ref [] 
 
@@ -124,12 +156,24 @@ let handle_request (c : color) (r : request) : action =
         else findWeakest mons2 mons1 (List.hd mons2)
       in firstTime := 1; SelectStarter (pick.species)
     | PickRequest (c, gsd, _, sp) ->
-      let (a1,b1) = gsd in
+      (*let (a1,b1) = gsd in
         let myteam = if c = Red then a1 else b1 in
         let (mons,invo,creds) = myteam in
         (* something could go wrong with the .hd here T^T *)
-        let pick = List.hd (filterPool (mostCommon mons [] 0) [] sp)
-        in PickSteammon (pick.species)
+        let x = filterPool (mostCommon mons [] 0) [] sp in
+        let pick = match x with
+        | [] -> failwith "filterpool returned empty"
+        | h::t -> h
+        in PickSteammon (pick.species)*)
+        if List.length(!oppTeam) = 0 then (*you get first pick*)
+          let pick = firstPick sp [] in
+          PickSteammon (pick.species)
+        else
+          let otherTeam = if c = Red then snd gsd else fst gsd in
+          let (mons,_,_) = otherTeam in
+            oppTeam := mons;
+          let pick = firstPick sp [] in
+            PickSteammon (pick.species)
     | ActionRequest (gr) ->
         let (a1, b1) = gr in
         let (my_team, their_team) = if c = Red then (a1, b1) else (b1, a1) in
