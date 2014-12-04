@@ -16,6 +16,7 @@ type andy = {
   mutable credits: int*int
 }
 type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
+let battle_error = ref false
 let state = ref Init
 let draftRD = ref 1
 let draftColor = ref Red 
@@ -225,7 +226,18 @@ let handle_step g ra ba =
       end
     else if !state = Inventory then 
       inventory gsd [] [] true true 
-    else failwith "Finish exception handling from Section 4.6"
+    else if !state = Battle then begin
+      battle_error := true;
+      (None, gsd, Some (Request(ActionRequest gsd)), Some (Request(ActionRequest gsd)))
+    end
+    else if !state = BattleSelect then begin
+      if data.ra.curr_hp = 0 && data.ba.curr_hp = 0 then
+        (None, gsd, Some (Request(StarterRequest gsd)), Some (Request(StarterRequest gsd)))
+      else if data.ra.curr_hp = 0 then
+        (None, gsd, Some (Request(StarterRequest gsd)), None)
+      else
+        (None, gsd, None, Some (Request(StarterRequest gsd))) end
+    else failwith "Something went really fucking wrong."
   in 
 
   let rec get_mon lst name : steammon option =
@@ -249,9 +261,17 @@ let handle_step g ra ba =
         match lst with
         | [] -> []
         | h::t -> if h.species = mon.species then t else h::(remove_mon t mon) in
+      let rec nth_mon lst n : steammon =
+        match lst with
+        | [] -> failwith "should not be reached"
+        | h::t -> if n = 0 then h else nth_mon t (n - 1) in
       match get_mon sl' s_name with
       | None -> sl (*valid steammon not selected*)
-      | Some in_mon -> in_mon::(remove_mon sl' in_mon) in
+      | Some in_mon -> 
+          if in_mon.curr_hp > 0 then in_mon::(remove_mon sl' in_mon)
+          else let sl'' = List.filter (fun mon -> mon.curr_hp > 0) sl' in
+               let rand_mon = nth_mon sl'' (Random.int (List.length sl'')) in
+               rand_mon::(remove_mon sl' rand_mon) in
 
     match color with
     | Red -> let team = switch_helper (data.ra::data.rp) in
@@ -410,6 +430,7 @@ let handle_step g ra ba =
   (*if the steammon is poisoned or burned, then it is returned with damage
     inflicted.*)
   let status_end mon color : steammon =
+    if !state != Battle then mon else
     match mon.status with
     | Some Burned -> 
         let dmg = int_of_float( (float_of_int mon.max_hp) *. cBURN_DAMAGE ) in
@@ -489,7 +510,7 @@ let handle_step g ra ba =
         else
           Some m
     | Some _ , Some m
-    | None , Some m -> if m.pp_remaining < 1 then Some struggle else Some m in
+    | None , Some m -> if m.pp_remaining < 1 then begin add_update(Message "no pp"); Some struggle end else Some m in
 
   (*returns true at a certain probability. true means that the move hits 
     and false means that the move misses.*)
@@ -608,19 +629,20 @@ let handle_step g ra ba =
   (*replaces the move with the same name as the given move in the steammon.
     the altered steammon is returned. if the steammon does not know the move,
     then the steammon is returned unchanged.*)
-  let replace_move mon (move: move) : steammon =
-    let name = move.name in
-    if mon.first_move.name = name then {mon with first_move = move}
-    else if mon.second_move.name = name then {mon with second_move = move}
-    else if mon.third_move.name = name then {mon with third_move = move}
-    else if mon.fourth_move.name = name then {mon with fourth_move = move}
+  let replace_move mon (m: move) : steammon =
+    let name = m.name in
+    if mon.first_move.name = name then begin print_endline "help"; {mon with first_move = m} end
+    else if mon.second_move.name = name then {mon with second_move = m}
+    else if mon.third_move.name = name then {mon with third_move = m}
+    else if mon.fourth_move.name = name then {mon with fourth_move = m}
          else mon in
 
   (*decrements the pp of the given move by one.
     side effects: the active steammon in the given team is updated
     with the decremented pp. *)
   let reduce_pp move color data : unit =
-    let move' = {move with pp_remaining = move.pp_remaining - 1} in
+    print_int move.pp_remaining;
+    let move' = {move with pp_remaining = (move.pp_remaining - 1)} in
     match color with
     | Red -> data.ra <- replace_move data.ra move'
     | Blue -> data.ba <- replace_move data.ba move' in
@@ -648,7 +670,8 @@ let handle_step g ra ba =
           let opp' = {opp with curr_hp = opp.curr_hp - dmg} in
           match move.effects with
           | None -> (user, opp')
-          | Some eff -> move_effects eff (user, opp') dmg attacker data
+          | Some eff -> if fst matchup = Ineffective then (user, opp')
+                        else move_effects eff (user, opp') dmg attacker data
         end in
 
     let move_helper (user, opp) : steammon*steammon =
@@ -670,7 +693,8 @@ let handle_step g ra ba =
           result.toward <- (if move.target = User then attacker else invert_color attacker);
           result.hit <- Hit;
           result.effects <- [];
-          dmg_and_effects (user, opp) move
+          let user' = if attacker = Red then data.ra else data.ba in
+          dmg_and_effects (user', opp) move
       | Some move -> 
           reduce_pp move attacker data;
           result.name <- move.name;
@@ -681,7 +705,8 @@ let handle_step g ra ba =
           result.hit <- Miss;
           result.effectiveness <- Regular;
           result.effects <- [];
-          (user, opp) in
+          let user' = if attacker = Red then data.ra else data.ba in
+          (user', opp) in
 
     match attacker with
     | Red -> let (rs', bs') = move_helper (rs, bs) in
@@ -705,6 +730,7 @@ let handle_step g ra ba =
   (*called if either steammon has fainted. does end-of-turn status effects on
     any alive steammon and returns the appropriate game_output *)
   let rec faint_response data (rs, bs) : game_output =
+    battle_error := false;
     state := BattleSelect;
     add_update(UpdateSteammon (rs.species, rs.curr_hp, rs.max_hp, Red));
     add_update(UpdateSteammon (bs.species, bs.curr_hp, bs.max_hp, Blue));
@@ -727,6 +753,7 @@ let handle_step g ra ba =
   (*assumes both steammon have not fainted yet. does end-of-turn status effects
     on both steammon and returns the appropriate game_output*)
   let alive_response data (rs, bs) : game_output =
+    battle_error := false;
     let rs' = status_end rs Red and bs' = status_end bs Blue in
     data.ra <- rs';
     data.ba <- bs';
@@ -754,7 +781,7 @@ let handle_step g ra ba =
     | h::t -> h.curr_hp = 0 && all_fainted t in
 
   (if !state = BattleSelect && (all_fainted (data.ra::data.rp) || all_fainted (data.ba::data.bp)) then state := Winner);
-  (if !state = Battle then pre_battle_phase ());
+  (if !state = Battle && !battle_error = false then pre_battle_phase ());
 
   match g, ra, ba with 
   | Game gsd, _ , _ when !state = Winner -> 
@@ -907,10 +934,34 @@ let handle_step g ra ba =
     end;
     alive_response data (data.ra, data.ba)
 
-  | Game gsd, DoNothing, Action(SelectStarter bs) when !state = BattleSelect ->
+  | Game gsd, Action(UseMove rmove), _ when !state = Battle ->
+      perform_move rmove (data.ra, data.ba) Red data;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, _ , Action(UseMove bmove) when !state = Battle ->
+      perform_move bmove (data.ra, data.ba) Blue data;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, Action(SwitchSteammon rs), _ when !state = Battle ->
+      switch_in rs Red data;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, _ , Action(SwitchSteammon bs) when !state = Battle ->
+      switch_in bs Blue data;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, Action(UseItem(ri, rs)), _ when !state = Battle ->
+      use_item ri rs Red data;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, _ , Action(UseItem(bi, bs)) when !state = Battle ->
+      use_item bi bs Red data;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, _ , Action(SelectStarter bs) when !state = BattleSelect ->
       switch_in bs Blue data; state := Battle;
       alive_response data (data.ra, data.ba)
-  | Game gsd, Action(SelectStarter rs), DoNothing when !state = BattleSelect ->
+  | Game gsd, Action(SelectStarter rs), _  when !state = BattleSelect ->
       switch_in rs Red data; state := Battle;
       alive_response data (data.ra, data.ba)
 
