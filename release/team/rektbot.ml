@@ -187,8 +187,9 @@ let handleSingleDraft (s:steammon) (pool:steammon list):steammon=
   | _ -> failwith "how did they not draft anything???"*)
 
 let makeTheMostOf (pool:steammon list) (creds:int):steammon =
+  let filtered = List.filter (fun a -> a.cost <= creds) pool in
   List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
-    && (e.cost<creds) then e else acc) (List.hd pool) pool
+    && (e.cost<creds) then e else acc) (List.hd filtered) filtered
 
 (*let tankPick c gsd pool = 
   let ((_,_,cr),(_,_,cb)) = gsd in
