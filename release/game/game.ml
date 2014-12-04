@@ -74,29 +74,54 @@ let move_result_convert (mrm: move_result_mut) : move_result =
    damage=mrm.damage; hit=mrm.hit; effectiveness=mrm.effectiveness; 
    effects=mrm.effects}
 
+(*
+ * Convert to the game_status_data defined in definitions.ml
+ *)
 let game_datafication g = match g with 
   | Game x -> x 
-  
+
+(*
+ * Convert to type game from game_status_data
+ *)  
 let game_from_data game_data = Game (game_data)
 
+(* handle_step gs ra ba is used to generate the next state of the game.
+ * gs is the current game state entering this turn.
+ * ra and ba are the Action commands sent by the red team and the blue
+ *   team, respectively. If ra and ba are not Action(action) commands,
+ *   the game will ignore the command given.
+ * handle_step outputs game_output (gr, gs, rr, br) where:
+ * gr is the result of the game. Output None if no winner was determined.
+ * gs is the state of the game after handle_step ended.
+ * rr is an option containing the request for the red team
+ * br is an option containing the request for the blue team
+ * None indicates that the team should respond with DoNothing
+ *)
 let handle_step g ra ba = 
   
+  (*for drafting purposes, sets the player to draft next if the round 
+  that we are on is odd*)
   let changeColor () = 
     if !draftRD mod 2 = 1 then draftColor := invert_color !draftColor
   in 
 
+  (*adds draft related update to the gui, remove the steammon from the
+  draftpool and increments the draft round accordingly*)
   let draftupdate s c=
     add_update(UpdateSteammon (s.species, s.curr_hp, s.max_hp, c)); 
     Table.remove draftpool s.species; 
     draftRD := !draftRD + 1; ()
   in
-
+  
+  (*finds steammon of minimum cost in the available draft pool*)
   let findMin () = 
     let lst = hash_to_list(draftpool) in
       let sorted = List.sort (fun a b -> a.cost - b.cost) lst in 
         List.hd sorted   
    in
   
+  (*returns the appropriate game status data given the current game_status_data
+  *)
   let draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) c s z = 
     match c, z with 
     | Red, true -> (((s::rsl),ri,0), (bsl,bi,bcred))
@@ -105,12 +130,17 @@ let handle_step g ra ba =
     | Blue, false -> ((rsl,ri,rcred),(s::bsl,bi,bcred-s.cost))
   in
   
+  (*apprpriately ends the draft phase and transitions to the inventory phase*)
   let endDraft gsd =
     state := Inventory;
     (None, gsd, Some(Request(PickInventoryRequest gsd)), 
       Some(Request(PickInventoryRequest gsd)))
-  in 
+  in
 
+  (*handles the draft part*)
+  (*requires: game status data and name of steammon to draft*)
+  (*returns: an appropriate game status data representing the current state of
+  the game*)
   let draft ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
       let checkEnd = ((List.length rsl = cNUM_PICKS-1) && 
       (List.length bsl = cNUM_PICKS)) || ((List.length rsl = cNUM_PICKS) && 
@@ -968,6 +998,15 @@ let handle_step g ra ba =
   | Game gsd, DoNothing, DoNothing
   | Game gsd, _, _ -> exception_handle gsd
 
+(* init_game generates a blank copy of the game, returning (gs * r1 * r2 
+ * al * sl).
+ * gs is a game with inventories initialized, and neither player with any
+ *   steammon.
+ * r1 is the first request sent out to the red team
+ * r2 is the first request sent out to the blue team
+ * al is the list of all attacks, as read from attack.txt
+ * sl is the list of all steammon as read from steammon.txt
+ *)
 let init_game () =
   init_pool ("moves.csv") ("steammon.csv");
   (Game(([],[],cSTEAMMON_CREDITS),([],[],cSTEAMMON_CREDITS)),
