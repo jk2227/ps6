@@ -127,19 +127,38 @@ let getAvgCost (pool:steammon list):int=
 let isWithinCostRange (cost:int) (otherCost:int):bool = 
   abs(cost-otherCost) > 10
 
-let firstPick (pool:steammon list) (values:int list):steammon =
-  let evaluate (s:steammon):int = (*SABLEYE!!!!!!!*)
+let firstPick (pool:steammon list):steammon =
+  let darkghost = List.filter (fun a -> match a.first_type,a.second_type with
+    | Some Dark, Some Ghost | Some Ghost, Some Dark -> true
+    | _ -> false) pool in
+  if List.length(darkghost) > 0 then
+    List.hd(darkghost)
+  else
+    let groundflying = List.filter (fun a -> match a.first_type,a.second_type with
+    | Some Ground, Some Flying | Some Flying, Some Ground -> true
+    | _ -> false) pool in
+  if List.length(groundflying) > 0 then
+    List.hd(groundflying)
+  else
+    let darkflying = List.filter (fun a -> match a.first_type,a.second_type with
+    | Some Dark, Some Flying | Some Flying, Some Dark -> true
+    | _ -> false) pool in
+  if List.length(darkflying) > 0 then
+    List.hd(darkflying)
+  else
+    let evaluate (s:steammon):int = 
     let moves = [s.first_move;s.second_move;s.third_move;s.fourth_move] in
     List.fold_left (fun acc e -> acc+(int_of_float(float_of_int (e.power)*.
       float_of_int(e.accuracy)/.100.))) 0 moves
-  in
-  let sortedMons = Botutils.extractThing(List.sort Botutils.greaterStat 
+    in
+    let sortedMons = Botutils.extractThing(List.sort Botutils.greaterStat 
     (Botutils.pairStat (fun mon -> evaluate mon) pool)) in
-  let suitablyPriceMons = List.filter (fun a -> isWithinCostRange 
+    let suitablyPriceMons = List.filter (fun a -> isWithinCostRange 
     (a.cost) (getAvgCost pool)) sortedMons in
-  match suitablyPriceMons with
-  | [] -> failwith "something wrong happened???"
-  | h::t -> h
+    match suitablyPriceMons with
+    | [] -> failwith "something wrong happened???"
+    | h::t -> h
+  
 
 let minCostDiffMon (pool:steammon list) (theirMon:steammon):steammon=
   let head = List.hd pool in
@@ -153,24 +172,56 @@ let handleSingleDraft (s:steammon) (pool:steammon list):steammon=
     sortedTuples) in
   minCostDiffMon okMons s
 
-let handleCoupleDraft (sl:steammon list) (pool:steammon list):steammon=
+(*let handleCoupleDraft (sl:steammon list) (pool:steammon list):steammon=
   match sl with
   | h::h2::t -> let first = List.fold_left 
   (fun acc e -> handleSingleDraft h pool) h sl in
   let second = List.fold_left (fun acc e -> handleSingleDraft h2 pool) 
   h2 t in
-  firstPick [first;second] []
-  | _ -> failwith "wtf happened here"
+  firstPick [first;second]
+  | _ -> failwith "wtf happened here"*)
 
-let smartPick (theirNew:steammon list) (pool:steammon list):steammon=
+(*let smartPick (theirNew:steammon list) (pool:steammon list):steammon=
   match theirNew with
   | h::t -> handleSingleDraft h pool
-  | _ -> failwith "how did they not draft anything???"
+  | _ -> failwith "how did they not draft anything???"*)
 
 let makeTheMostOf (pool:steammon list) (creds:int):steammon =
-  let s = List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
-    && (e.cost<creds) then e else acc) (List.hd pool) pool in
-  failwith ((string_of_int creds) ^","^ (string_of_int s.cost) ^","^ s.species)
+  List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
+    && (e.cost<creds) then e else acc) (List.hd pool) pool
+
+let tankPick c gsd pool = 
+  let tanks = Botutils.extractThing (List.sort greaterStat 
+    (pairStat (fun mon -> mon.defense+mon.max_hp+mon.spl_defense) pool)) in
+  let pick = List.hd tanks in
+    PickSteammon (pick.species)
+
+let pickReq1 c gsd sp =
+          let opp = if c = Red then snd gsd else fst gsd in
+          let (monz,_,_) = opp in
+          if List.length(monz) = 0 then (*you get first pick*)
+          let pick = firstPick sp in
+          PickSteammon (pick.species)
+        else
+          let otherTeam = if c = Red then snd gsd else fst gsd in
+          let (mons,_,_) = otherTeam in
+          oppTeam := mons;
+          let myTeam = if c = Red then fst gsd else snd gsd in
+          let (myMons,_,creds) = myTeam in
+          if List.length (myMons) >= cNUM_PICKS-1 then
+            (* last mon,draft the most expensive u can afford *)
+            let pick = makeTheMostOf sp creds in
+                PickSteammon (pick.species)
+          else
+            let newMons = getNewMons (!oppTeam) (getUpdatedTeam mons) [] in
+            if List.length(newMons) = 0 then
+            let pick = firstPick sp in
+            oppTeam := (List.hd newMons)::(!oppTeam);
+            PickSteammon (pick.species)
+            else
+            let pick = handleSingleDraft (List.hd newMons) sp in
+            oppTeam := (List.hd newMons)::(!oppTeam);
+            PickSteammon (pick.species)
 
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
@@ -192,27 +243,8 @@ let handle_request (c : color) (r : request) : action =
         else findWeakest mons2 mons1 (List.hd mons2)
       in firstTime := 1; SelectStarter (pick.species)
     | PickRequest (c, gsd, _, sp) ->
-          let opp = if c = Red then snd gsd else fst gsd in
-          let (monz,_,_) = opp in
-        if List.length(monz) = 0 then (*you get first pick*)
-          let pick = firstPick sp [] in
-          PickSteammon (pick.species)
-        else
-          let otherTeam = if c = Red then snd gsd else fst gsd in
-          let (mons,_,_) = otherTeam in
-          oppTeam := mons;
-          let myTeam = if c = Red then fst gsd else snd gsd in
-          let (myMons,_,creds) = myTeam in
-          if List.length (myMons) >= cNUM_PICKS-1 then
-            (* last mon,draft the most expensive u can afford *)
-            let pick = makeTheMostOf sp creds in
-                PickSteammon (pick.species)
-          else
-            let newMons = getNewMons (!oppTeam) (getUpdatedTeam mons) [] in
-            
-            let pick = handleSingleDraft (List.hd newMons) sp in
-            oppTeam := (List.hd newMons)::(!oppTeam);
-            PickSteammon (pick.species)
+          (*pickReq1 c gsd sp*)
+          tankPick c gsd sp
     | ActionRequest (gr) ->
         let (a1, b1) = gr in
         let (my_team, their_team) = if c = Red then (a1, b1) else (b1, a1) in
