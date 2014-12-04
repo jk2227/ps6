@@ -86,17 +86,16 @@ let handle_step g ra ba =
     if !draftRD mod 2 = 1 then draftColor := invert_color !draftColor
   in 
 
-  let draftupdate name s c=
-    add_update(UpdateSteammon (name, s.curr_hp, s.max_hp, c)); 
-    Table.remove draftpool name; 
+  let draftupdate s c=
+    add_update(UpdateSteammon (s.species, s.curr_hp, s.max_hp, c)); 
+    Table.remove draftpool s.species; 
     draftRD := !draftRD + 1; ()
   in
 
-  let findMin name s = 
-    Table.fold (fun k v (n,m) -> 
-        if v.cost < m.cost then (k,v) else (n,m))
-              draftpool (name,s) 
-
+  let findMin () = 
+    let lst = hash_to_list(draftpool) in
+      let sorted = List.sort (fun a b -> a.cost - b.cost) lst in 
+        List.hd sorted   
    in
   
   let draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) c s z = 
@@ -106,25 +105,27 @@ let handle_step g ra ba =
     | Blue, true -> ((rsl,ri,rcred), (s::bsl,bi,0))
     | Blue, false -> ((rsl,ri,rcred),(s::bsl,bi,bcred-s.cost))
   in
+  
+  let endDraft gsd =
+    drafting := 0; 
+    invent := 1; 
+    (None, gsd, Some(Request(PickInventoryRequest gsd)), 
+      Some(Request(PickInventoryRequest gsd)))
+  in 
 
   let draft ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
     if ((List.length rsl = cNUM_PICKS) && (List.length bsl = cNUM_PICKS)) then
-      begin 
-      drafting := 0;
-      invent := 1; 
-      add_update(Message "End of draft"); 
       let gsd = ((rsl,ri,rcred),(bsl,bi,bcred)) in 
-        (None, gsd, Some(Request(PickInventoryRequest gsd)), 
-          Some(Request(PickInventoryRequest gsd))) 
-      end 
-
+        endDraft gsd 
     else 
-      let s = Table.find draftpool name in
+      let s = if Table.mem draftpool name = false then findMin () 
+        else Table.find draftpool name 
+      in
       match !draftColor with 
       | Red when List.length rsl < cNUM_PICKS -> begin
           changeColor ();
           if s.cost < rcred then begin 
-            draftupdate name s Red; 
+            draftupdate s Red; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red s false in
             (None, gsd, None, 
               Some(Request(PickRequest(!draftColor,gsd, 
@@ -132,10 +133,10 @@ let handle_step g ra ba =
                 hash_to_list(draftpool)))))
           end
           else begin
-            let (min_name, min_mon) = findMin name s in 
-            draftupdate min_name min_mon Red; 
-            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red min_mon 
-            (min_mon.cost > rcred) in
+            let mon = findMin () in 
+            draftupdate mon Red; 
+            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red mon 
+            (mon.cost > rcred) in
             (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool)))))   
@@ -144,7 +145,7 @@ let handle_step g ra ba =
       | Blue when List.length bsl < cNUM_PICKS -> begin
           changeColor ();
           if s.cost < rcred then begin 
-            draftupdate name s Blue; 
+            draftupdate s Blue; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue s false in
             (None, gsd, None, 
               Some(Request(PickRequest(!draftColor,gsd, 
@@ -152,10 +153,10 @@ let handle_step g ra ba =
                 hash_to_list(draftpool)))))
           end
           else begin
-            let (min_name, min_mon) = findMin name s in 
-            draftupdate min_name min_mon Blue; 
-            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue min_mon 
-            (min_mon.cost > rcred)in
+            let mon = findMin () in 
+            draftupdate mon Blue; 
+            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue mon 
+            (mon.cost > rcred)in
             (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool)))))   
@@ -164,36 +165,31 @@ let handle_step g ra ba =
        | _ -> failwith "should never reach here"
       in
 
-  let inventory ((rsl,ri,rcred),(bsl,bi,bcred)) invlstR invlstB exc = begin
-    invent := 0; 
-    battling := 1; 
+  let validInventory invlst exc = 
     let default = [cNUM_ETHER; cNUM_MAX_POTION; cNUM_REVIVE;
-     cNUM_FULL_HEAL; cNUM_XATTACK; cNUM_XDEFENSE; cNUM_XSPEED] in 
-    let itemlst = [cCOST_ETHER; cCOST_MAXPOTION; cCOST_REVIVE;
-    cCOST_FULLHEAL; cCOST_XATTACK; cCOST_XDEFEND; cCOST_XSPEED] in 
+       cNUM_FULL_HEAL; cNUM_XATTACK; cNUM_XDEFENSE; cNUM_XSPEED] in 
     if exc then 
-      let gsd = ((rsl,default,rcred),(bsl,default,bcred)) in 
-      (None, gsd, Some(Request(StarterRequest(gsd))), 
-        Some(Request(StarterRequest(gsd))))
+      default 
     else 
-      let rcost = List.fold_left2 (fun acc a b-> acc+(a*b)) 0 invlstR itemlst in 
-      let bcost = List.fold_left2 (fun acc a b-> acc+(a*b)) 0 invlstB itemlst in 
-      match (rcost > cINITIAL_CASH), (bcost > cINITIAL_CASH) with 
-      | true, true -> let gsd = ((rsl,default,rcred),(bsl,default,bcred)) in 
-      (None, gsd, Some(Request(StarterRequest(gsd))), 
-        Some(Request(StarterRequest(gsd))))
-      | true, false -> let gsd = ((rsl,default,rcred),(bsl,invlstB,bcred)) in 
-      (None, gsd, Some(Request(StarterRequest(gsd))), 
-        Some(Request(StarterRequest(gsd))))
-      | false, true -> let gsd = ((rsl,invlstR,rcred),(bsl,default,bcred)) in 
-      (None, gsd, Some(Request(StarterRequest(gsd))), 
-        Some(Request(StarterRequest(gsd))))
-      | false, false -> let gsd = ((rsl,invlstR,rcred),(bsl,invlstB,bcred)) in 
-      (None, gsd, Some(Request(StarterRequest(gsd))), 
-        Some(Request(StarterRequest(gsd))))
-  end in 
+      let itemlst = [cCOST_ETHER; cCOST_MAXPOTION; cCOST_REVIVE;
+      cCOST_FULLHEAL; cCOST_XATTACK; cCOST_XDEFEND; cCOST_XSPEED] in 
+      let cost = List.fold_left2(fun acc a b -> acc+(a*b)) 0 invlst itemlst in 
+      if cost > cINITIAL_CASH then 
+        default 
+      else invlst 
+  in
 
-  let initialize gsd red blue = begin
+  let inventory ((rsl,ri,rcred),(bsl,bi,bcred)) invlstR invlstB excR excB = 
+      invent := 0; 
+      battling := 1; 
+      let r_inv = validInventory invlstR false in 
+      let b_inv = validInventory invlstR false in 
+      let gsd = ((rsl, r_inv, rcred), (bsl, b_inv, bcred)) in 
+    (None, gsd, Some(Request(StarterRequest(gsd))), 
+      Some(Request(StarterRequest(gsd))))
+   in 
+
+  let initialize gsd red blue = 
     send_update (InitGraphics (red,blue));
     init := 0; 
     drafting := 1;
@@ -210,49 +206,37 @@ let handle_step g ra ba =
       (None, gsd, None, Some(Request(PickRequest(Blue,gsd,
         hash_to_list (Initialization.move_table), 
         hash_to_list(draftpool)))))
-    end
+    end 
 
-  end in
+  in
 
   let exception_handle gsd = 
     if !init = 1 then 
         initialize gsd "Red" "Blue"
-    else if !drafting = 1 then 
-      match (hash_to_list draftpool) with 
-      | h::t -> let (n,m) = findMin h.species h in
-        draftupdate n m !draftColor;
-        let ((rsl,ri,rcred),(bsl,bi,bcred)) = gsd in begin
+    else if !drafting = 1 then begin (*TODO*)
+      let ((rsl,ri,rcred), (bsl,bi,bcred)) = gsd in 
+      if ((List.length rsl = cNUM_PICKS) && (List.length bsl = cNUM_PICKS)) then
+        endDraft gsd
+      else   
+        let s = findMin () in
         match !draftColor with 
-        | Red -> changeColor ();  
-                 if m.cost > rcred then 
-                   let gsd = (((m::rsl),ri,0), (bsl,bi,bcred)) in
-                    (None, gsd, None, 
-                    Some(Request(PickRequest(!draftColor,gsd, 
-                    hash_to_list (Initialization.move_table), 
-                    hash_to_list(draftpool))))) 
-                else  
-                  let gsd = (((m::rsl),ri,(rcred-m.cost)), (bsl,bi,bcred)) in
-                  (None, gsd, None, 
-                  Some(Request(PickRequest(Blue,gsd, 
-                  hash_to_list (Initialization.move_table), 
-                  hash_to_list(draftpool))))) 
-        | Blue -> changeColor ();
-                  if m.cost > bcred then 
-                    let gsd = ((rsl,ri,rcred), (m::bsl,bi,0)) in
-                    (None, gsd, None, 
-                    Some(Request(PickRequest(Blue,gsd, 
-                    hash_to_list (Initialization.move_table), 
-                    hash_to_list(draftpool)))))
-                  else 
-                    let gsd = ((rsl,ri,(rcred)), (m::bsl,bi,bcred-m.cost)) in
-                    (None, gsd, None, 
-                    Some(Request(PickRequest(Blue,gsd, 
-                    hash_to_list (Initialization.move_table), 
-                    hash_to_list(draftpool)))))
-        end
-      | _ -> failwith "not enough steammons available to complete draft" 
+        | Red -> changeColor (); 
+              draftupdate s Red;
+              let new_gsd = if s.cost >rcred then ((s::rsl, ri,0),(bsl, bi, bcred)) 
+              else ((s::rsl, ri, rcred-s.cost),(bsl, bi, bcred)) in 
+              (None, new_gsd, None, Some(Request(PickRequest(!draftColor, 
+                new_gsd, hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool)))))
+        | Blue -> changeColor (); 
+              draftupdate s Blue;
+              let new_gsd = if s.cost > bcred then ((rsl,ri,rcred),(s::bsl, bi, 0))  
+              else ((rsl, ri, rcred),(s::bsl, bi, bcred - s.cost)) in 
+              (None, new_gsd, None, Some(Request(PickRequest(!draftColor, 
+                new_gsd, hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool))))) 
+      end
     else if !invent = 1 then 
-      inventory gsd [] [] true
+      inventory gsd [] [] true true 
     else failwith "Finish exception handling from Section 4.6"
   in 
 
@@ -762,8 +746,11 @@ let handle_step g ra ba =
   | Game gsd, Action(PickSteammon name), DoNothing 
   | Game gsd, DoNothing, Action(PickSteammon name) -> draft gsd name 
   | Game gsd, Action(PickInventory (invlst1)), Action(PickInventory (invlst2))->
-      inventory gsd invlst1 invlst2 false
-
+      inventory gsd invlst1 invlst2 false false 
+  | Game gsd, Action(PickInventory(invlst1)), DoNothing -> 
+    inventory gsd invlst1 [] false true 
+  | Game gsd, DoNothing, Action(PickInventory(invlst2)) -> 
+    inventory gsd [] invlst2 true false 
   (*battle phase*)
     (*first step: both players select their starting pokemon*)
   | Game (rtd, btd), Action(SelectStarter (rs)), Action(SelectStarter (bs)) -> 
