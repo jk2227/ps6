@@ -191,10 +191,20 @@ let makeTheMostOf (pool:steammon list) (creds:int):steammon =
     && (e.cost<creds) then e else acc) (List.hd pool) pool
 
 let tankPick c gsd pool = 
-  let tanks = Botutils.extractThing (List.sort greaterStat 
-    (pairStat (fun mon -> mon.defense+mon.max_hp+mon.spl_defense) pool)) in
-  let pick = List.hd tanks in
+  let ((_,_,cr),(_,_,cb)) = gsd in
+  let rc = if c = Red then cr else cb in 
+  let tanks = Botutils.orderDescBy pool 
+    (fun s -> s.max_hp*s.defense*s.spl_defense) in
+  let potatoes = List.filter 
+  (fun a -> a.cost <= min rc cSTEAMMON_CREDITS/(cNUM_PICKS-2)) tanks in
+  let pick = List.hd potatoes in
     PickSteammon (pick.species)
+
+(*let strikerPick c gsd pool =
+  let strikers = Botutils.orderDescBy pool
+    (fun s -> s.attack*s.spl_attack*s.speed) in
+  let asparagus = List.filter
+  ()*)
 
 let pickReq1 c gsd sp =
           let opp = if c = Red then snd gsd else fst gsd in
@@ -243,8 +253,9 @@ let handle_request (c : color) (r : request) : action =
         else findWeakest mons2 mons1 (List.hd mons2)
       in firstTime := 1; SelectStarter (pick.species)
     | PickRequest (c, gsd, _, sp) ->
-          (*pickReq1 c gsd sp*)
-          tankPick c gsd sp
+          pickReq1 c gsd sp
+          (*tankPick c gsd sp*)
+          (*strikerPick c gsd sp*)
     | ActionRequest (gr) ->
         let (a1, b1) = gr in
         let (my_team, their_team) = if c = Red then (a1, b1) else (b1, a1) in
