@@ -16,9 +16,9 @@ let _ = Random.self_init ()
 let calcScore (myMon:steammon) (tgtMon:steammon):int = (* returns multiplier *)
             List.fold_left (fun acc e -> 
               acc+ceil(snd(Util.calculate_type_matchup e 
-              (myMon.first_type,myMon.second_type))))
-            0 [tgtMon.first_move.element;tgtMon.second_move.element;
-            tgtMon.third_move.element;tgtMon.fourth_move.element]
+              (tgtMon.first_type,tgtMon.second_type))))
+            0 [myMon.first_move.element;myMon.second_move.element;
+            myMon.third_move.element;myMon.fourth_move.element]
 
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
@@ -40,16 +40,18 @@ let handle_request (c : color) (r : request) : action =
         else findTheVeryBest mons2 (List.hd mons2) (List.hd mons1)
         in SelectStarter (pick.species)
       else firstTime := 1;
-        let rec findWeakest (myMons:steammon list) 
-        (oppMons:steammon list) (weakest:steammon):steammon=
-        match myMons with
-        | [] -> weakest
-        | h::t -> let wk = List.fold_left (fun acc e -> 
-        if calcScore h e < calcScore weakest e then h else weakest) 
+          let rec findWeakest (myMons:steammon list) 
+          (oppMons:steammon list) (weakest:steammon):steammon=
+          match myMons with
+          | [] -> weakest
+          | h::t -> let wk = List.fold_left (fun acc e -> 
+          if calcScore h e < calcScore weakest e then h else weakest) 
         weakest oppMons in findWeakest t oppMons wk
-        in let pick = if c = Red
-        then findWeakest mons1 mons2 (List.hd mons1)
-        else findWeakest mons2 mons1 (List.hd mons2)
+        in 
+          let pick = if c = Red
+          then findWeakest mons1 mons2 (List.hd mons1)
+          else findWeakest mons2 mons1 (List.hd mons2)
+          in SelectStarter (pick.species)
     | PickRequest(c, gsd, _, sp) ->
         let rec rater (mon:steammon) (pool:steammon list) 
         (acc:int*steammon):int*steammon =
@@ -63,7 +65,7 @@ let handle_request (c : color) (r : request) : action =
           let sorted = List.sort (fun a b -> 
             compare fst(a) fst(b)) pool in
           let priorityList = List.fold_left (fun acc e -> 
-            List.rev_append [snd(e)] acc) [] sorted
+            snd(e)::acc) [] sorted
         in
         let types = [("Fire",1);("Water",2);("Ice",3);("Grass",4);
         ("Poison",5);("Normal",6);("Flying",7);("Psychic",8);("Ghost",9);
