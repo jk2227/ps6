@@ -15,10 +15,8 @@ type andy = {
   mutable binv: int list;
   mutable credits: int*int
 }
-let init = ref 1
-let drafting = ref 0
-let invent = ref 0
-let battling = ref 0 
+type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
+let state = ref Init
 let draftRD = ref 1
 let draftColor = ref Red 
 let draftpool = Initialization.mon_table 
@@ -107,17 +105,15 @@ let handle_step g ra ba =
   in
   
   let endDraft gsd =
-    drafting := 0; 
-    invent := 1; 
+    state := Inventory;
     (None, gsd, Some(Request(PickInventoryRequest gsd)), 
       Some(Request(PickInventoryRequest gsd)))
   in 
 
   let draft ((rsl,ri,rcred),(bsl,bi,bcred)) name = 
-    if ((List.length rsl = cNUM_PICKS) && (List.length bsl = cNUM_PICKS)) then
-      let gsd = ((rsl,ri,rcred),(bsl,bi,bcred)) in 
-        endDraft gsd 
-    else 
+      let checkEnd = ((List.length rsl = cNUM_PICKS-1) && 
+      (List.length bsl = cNUM_PICKS)) || ((List.length rsl = cNUM_PICKS) && 
+      (List.length bsl = cNUM_PICKS-1)) in 
       let s = if Table.mem draftpool name = false then findMin () 
         else Table.find draftpool name 
       in
@@ -127,6 +123,9 @@ let handle_step g ra ba =
           if s.cost < rcred then begin 
             draftupdate s Red; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red s false in
+            if checkEnd then 
+              endDraft gsd 
+            else 
             (None, gsd, None, 
               Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
@@ -137,7 +136,10 @@ let handle_step g ra ba =
             draftupdate mon Red; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red mon 
             (mon.cost > rcred) in
-            (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
+            if checkEnd then 
+              endDraft gsd 
+            else 
+              (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool)))))   
           end  
@@ -147,7 +149,10 @@ let handle_step g ra ba =
           if s.cost < rcred then begin 
             draftupdate s Blue; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue s false in
-            (None, gsd, None, 
+            if checkEnd then 
+              endDraft gsd 
+            else
+              (None, gsd, None, 
               Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool)))))
@@ -156,7 +161,10 @@ let handle_step g ra ba =
             let mon = findMin () in 
             draftupdate mon Blue; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue mon 
-            (mon.cost > rcred)in
+            (mon.cost > rcred) in
+            if checkEnd then 
+              endDraft gsd 
+            else
             (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool)))))   
@@ -180,10 +188,10 @@ let handle_step g ra ba =
   in
 
   let inventory ((rsl,ri,rcred),(bsl,bi,bcred)) invlstR invlstB excR excB = 
-      invent := 0; 
-      battling := 1; 
-      let r_inv = validInventory invlstR false in 
-      let b_inv = validInventory invlstR false in 
+      state := BattleSelect;
+      copy_game_to_data g data;
+      let r_inv = validInventory invlstR excR in 
+      let b_inv = validInventory invlstR excB in 
       let gsd = ((rsl, r_inv, rcred), (bsl, b_inv, bcred)) in 
     (None, gsd, Some(Request(StarterRequest(gsd))), 
       Some(Request(StarterRequest(gsd))))
@@ -191,8 +199,7 @@ let handle_step g ra ba =
 
   let initialize gsd red blue = 
     send_update (InitGraphics (red,blue));
-    init := 0; 
-    drafting := 1;
+    state := Drafting;
     Random.self_init () ; 
     if (Random.int 2) = 0 then begin
       draftColor := Red; 
@@ -211,31 +218,12 @@ let handle_step g ra ba =
   in
 
   let exception_handle gsd = 
-    if !init = 1 then 
+    if !state = Init then 
         initialize gsd "Red" "Blue"
-    else if !drafting = 1 then begin (*TODO*)
-      let ((rsl,ri,rcred), (bsl,bi,bcred)) = gsd in 
-      if ((List.length rsl = cNUM_PICKS) && (List.length bsl = cNUM_PICKS)) then
-        endDraft gsd
-      else   
-        let s = findMin () in
-        match !draftColor with 
-        | Red -> changeColor (); 
-              draftupdate s Red;
-              let new_gsd = if s.cost >rcred then ((s::rsl, ri,0),(bsl, bi, bcred)) 
-              else ((s::rsl, ri, rcred-s.cost),(bsl, bi, bcred)) in 
-              (None, new_gsd, None, Some(Request(PickRequest(!draftColor, 
-                new_gsd, hash_to_list (Initialization.move_table), 
-                hash_to_list(draftpool)))))
-        | Blue -> changeColor (); 
-              draftupdate s Blue;
-              let new_gsd = if s.cost > bcred then ((rsl,ri,rcred),(s::bsl, bi, 0))  
-              else ((rsl, ri, rcred),(s::bsl, bi, bcred - s.cost)) in 
-              (None, new_gsd, None, Some(Request(PickRequest(!draftColor, 
-                new_gsd, hash_to_list (Initialization.move_table), 
-                hash_to_list(draftpool))))) 
+    else if !state = Drafting then begin
+      let s = findMin () in draft gsd s.species 
       end
-    else if !invent = 1 then 
+    else if !state = Inventory then 
       inventory gsd [] [] true true 
     else failwith "Finish exception handling from Section 4.6"
   in 
@@ -572,10 +560,8 @@ let handle_step g ra ba =
 
     (*performs a single effect on a steammon and returns the altered steammon.*)
     let single_effect (t: steammon) eff : steammon =
-      add_update(Message "doing an effect");
       match eff with
       | InflictStatus s -> 
-          add_update(Message "status inflicted");
           if t.status != None then t else 
           if (s = Asleep && sleep_clause color data) || (s = Frozen && freeze_clause color data) then
             t
@@ -646,6 +632,7 @@ let handle_step g ra ba =
         let matchup = calculate_type_matchup move.element (user.first_type, user.second_type) in
         result.damage <- dmg;
         result.effectiveness <- (fst matchup);
+        if dmg = 0 then result.effectiveness <- Regular;
         if dmg = user.curr_hp then ({user with curr_hp = 0}, opp) else begin
           let user' = {user with curr_hp = user.curr_hp - dmg} in
           match move.effects with
@@ -656,6 +643,7 @@ let handle_step g ra ba =
         let matchup = calculate_type_matchup move.element (opp.first_type, opp.second_type) in
         result.damage <- dmg;
         result.effectiveness <- (fst matchup);
+        if dmg = 0 && fst matchup != Ineffective then result.effectiveness <- Regular;
         if dmg = opp.curr_hp then (user, {opp with curr_hp = 0}) else begin
           let opp' = {opp with curr_hp = opp.curr_hp - dmg} in
           match move.effects with
@@ -717,6 +705,7 @@ let handle_step g ra ba =
   (*called if either steammon has fainted. does end-of-turn status effects on
     any alive steammon and returns the appropriate game_output *)
   let rec faint_response data (rs, bs) : game_output =
+    state := BattleSelect;
     add_update(UpdateSteammon (rs.species, rs.curr_hp, rs.max_hp, Red));
     add_update(UpdateSteammon (bs.species, bs.curr_hp, bs.max_hp, Blue));
     match rs.curr_hp , bs.curr_hp with 
@@ -759,30 +748,49 @@ let handle_step g ra ba =
     add_update(UpdateSteammon (data.ra.species, data.ra.curr_hp, data.ra.max_hp, Red));
     add_update(UpdateSteammon (data.ba.species, data.ba.curr_hp, data.ba.max_hp, Blue)) in
 
-  (if !battling = 1 then pre_battle_phase ());
+  let rec all_fainted sl : bool =
+    match sl with
+    | [] -> true
+    | h::t -> h.curr_hp = 0 && all_fainted t in
+
+  (if !state = BattleSelect && (all_fainted (data.ra::data.rp) || all_fainted (data.ba::data.bp)) then state := Winner);
+  (if !state = Battle then pre_battle_phase ());
 
   match g, ra, ba with 
-  | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) ->
+  | Game gsd, _ , _ when !state = Winner -> 
+      state := Init;
+      draftRD := 1;
+      let rsl = data.ra::data.rp and bsl = data.ba::data.bp in
+      if all_fainted rsl && all_fainted bsl then (Some Tie, gsd, None, None)
+      else if all_fainted rsl then (Some (Winner Blue), gsd, None, None)
+      else (Some (Winner Red), gsd, None, None)
+  | Game gsd, Action(SendTeamName (rName)), Action (SendTeamName (bName)) when !state = Init ->
       initialize gsd rName bName
-  | Game gsd, Action(SendTeamName (rName)), DoNothing -> 
+  | Game gsd, Action(SendTeamName (rName)), _ when !state = Init -> 
       initialize gsd rName "Blue"
-  | Game gsd, DoNothing, Action(SendTeamName (bName)) -> 
+  | Game gsd, _ , Action(SendTeamName (bName)) when !state = Init -> 
       initialize gsd "Red" bName
-  | Game gsd, Action(PickSteammon name), DoNothing 
-  | Game gsd, DoNothing, Action(PickSteammon name) -> draft gsd name 
-  | Game gsd, Action(PickInventory (invlst1)), Action(PickInventory (invlst2))->
+
+  | Game gsd, Action(PickSteammon rname), Action(PickSteammon bname) -> 
+    if !draftColor = Red then draft gsd rname else draft gsd bname 
+  | Game gsd, Action(PickSteammon name), _ when !state = Drafting -> draft gsd name
+  | Game gsd, _ , Action(PickSteammon name) when !state = Drafting -> draft gsd name 
+
+  | Game gsd, Action(PickInventory (invlst1)), Action(PickInventory (invlst2)) when !state = Inventory ->
       inventory gsd invlst1 invlst2 false false 
-  | Game gsd, Action(PickInventory(invlst1)), DoNothing -> 
+  | Game gsd, Action(PickInventory(invlst1)), _ when !state = Inventory -> 
     inventory gsd invlst1 [] false true 
-  | Game gsd, DoNothing, Action(PickInventory(invlst2)) -> 
+  | Game gsd, _ , Action(PickInventory(invlst2)) when !state = Inventory -> 
     inventory gsd [] invlst2 true false 
+
   (*battle phase*)
     (*first step: both players select their starting pokemon*)
-  | Game (rtd, btd), Action(SelectStarter (rs)), Action(SelectStarter (bs)) -> 
+  | Game(rtd, btd), Action(SelectStarter rs), Action(SelectStarter bs) when !state = BattleSelect -> 
       switch_in rs Red data; switch_in bs Blue data;
+      state := Battle;
       alive_response data (data.ra, data.ba)
     
-  | Game gsd, Action (UseMove rmove), Action (UseMove bmove) -> begin
+  | Game gsd, Action(UseMove rmove), Action(UseMove bmove) when !state = Battle -> begin
       match !first with
       | Red -> perform_move rmove (data.ra, data.ba) Red data;
           if check_faint (data.ra, data.ba) then 
@@ -805,7 +813,7 @@ let handle_step g ra ba =
               alive_response data (data.ra, data.ba) end
       end
 
-  | Game gsd, Action (UseMove rmove), Action (UseItem (bi, bs_name)) -> begin
+  | Game gsd, Action(UseMove rmove), Action(UseItem(bi, bs_name)) when !state = Battle -> begin
       match !first with
       | Red -> perform_move rmove (data.ra, data.ba) Red data;
           if data.ra.curr_hp <= 0 then begin
@@ -821,7 +829,7 @@ let handle_step g ra ba =
           else alive_response data (data.ra, data.ba)
       end
 
-  | Game gsd, Action( UseItem (ri, rs_name)), Action (UseMove bmove) -> begin
+  | Game gsd, Action(UseItem (ri, rs_name)), Action(UseMove bmove) when !state = Battle -> begin
       match !first with
       | Red -> use_item ri rs_name Red data;
           perform_move bmove (data.ra, data.ba) Blue data;
@@ -839,7 +847,7 @@ let handle_step g ra ba =
 
   (*note: fix case where one mon faints and the other mon uses a self-move*)
 
-  | Game gsd, Action (UseMove rmove), Action (SwitchSteammon bs_name) -> begin
+  | Game gsd, Action(UseMove rmove), Action(SwitchSteammon bs_name) when !state = Battle -> begin
       match !first with
       | Red -> perform_move rmove (data.ra, data.ba) Red data;
           if data.ra.curr_hp <= 0 then begin
@@ -855,7 +863,7 @@ let handle_step g ra ba =
           else alive_response data (data.ra, data.ba)
       end
 
-  | Game gsd, Action (SwitchSteammon rs_name), Action (UseMove bmove) -> begin
+  | Game gsd, Action(SwitchSteammon rs_name), Action(UseMove bmove) when !state = Battle -> begin
       match !first with
       | Red -> switch_in rs_name Red data;
           perform_move bmove (data.ra, data.ba) Blue data;
@@ -871,40 +879,43 @@ let handle_step g ra ba =
                     alive_response data (data.ra, data.ba) end
       end
 
-  | Game gsd, Action (UseItem (ri, rs)), Action (UseItem (bi, bs)) -> begin
+  | Game gsd, Action(UseItem (ri, rs)), Action(UseItem (bi, bs)) when !state = Battle -> begin
       match !first with
       | Red -> use_item ri rs Red data; use_item bi bs Blue data
       | Blue -> use_item bi bs Blue data; use_item ri rs Red data
     end;
     alive_response data (data.ra, data.ba)
 
-  | Game gsd, Action (SwitchSteammon rs), Action (SwitchSteammon bs) -> begin
+  | Game gsd, Action(SwitchSteammon rs), Action(SwitchSteammon bs) when !state = Battle -> begin
       match !first with
       | Red -> switch_in rs Red data; switch_in bs Blue data
       | Blue -> switch_in bs Blue data; switch_in rs Red data
     end;
     alive_response data (data.ra, data.ba)
 
-  | Game gsd, Action (UseItem (ri, rs)), Action (SwitchSteammon bs) -> begin
+  | Game gsd, Action(UseItem(ri, rs)), Action(SwitchSteammon bs) when !state = Battle -> begin
       match !first with
       | Red -> use_item ri rs Red data; switch_in bs Blue data
       | Blue -> switch_in bs Blue data; use_item ri rs Red data
     end;
     alive_response data (data.ra, data.ba)
 
-  | Game gsd, Action (SwitchSteammon rs), Action (UseItem (bi, bs)) -> begin
+  | Game gsd, Action(SwitchSteammon rs), Action(UseItem(bi, bs)) when !state = Battle -> begin
       match !first with
       | Red -> switch_in rs Red data; use_item bi bs Blue data
       | Blue -> use_item bi bs Blue data; switch_in rs Red data
     end;
     alive_response data (data.ra, data.ba)
 
-  | Game gsd, DoNothing, DoNothing -> exception_handle gsd 
-  | Game gsd, DoNothing, Action (SelectStarter bs) ->
-      switch_in bs Blue data; alive_response data (data.ra, data.ba)
-  | Game gsd, Action (SelectStarter rs), DoNothing ->
-      switch_in rs Red data; alive_response data (data.ra, data.ba)
-  | _ -> failwith "swag"
+  | Game gsd, DoNothing, Action(SelectStarter bs) when !state = BattleSelect ->
+      switch_in bs Blue data; state := Battle;
+      alive_response data (data.ra, data.ba)
+  | Game gsd, Action(SelectStarter rs), DoNothing when !state = BattleSelect ->
+      switch_in rs Red data; state := Battle;
+      alive_response data (data.ra, data.ba)
+
+  | Game gsd, DoNothing, DoNothing
+  | Game gsd, _, _ -> exception_handle gsd
 
 let init_game () =
   init_pool ("moves.csv") ("steammon.csv");
