@@ -261,12 +261,13 @@ let handle_step g ra ba =
     | [] -> None
     | h::t -> if h.species = name then Some h else get_mon t name in
 
-  (*takes a team_data and a steammon. returns a team_data with the given
-    steammon placed at the head of the steammon list (as the active pokemon) 
-    the pokemon switched out has its modifiers removed. *)
-
+  (*makes the given steammon the active steammon for team 'color'.
+    the steammon switched out has its modifiers removed. 
+    if the designated steammon is not in the team, then nothing
+    happens. *)
   let switch_in s_name color data : unit =
-
+    (*helper function that returns the rearranged steammon list and the
+      mods removed from the switched-out steammon *)
     let switch_helper sl : steammon list =
       let no_mods = {attack_mod=0; defense_mod=0; spl_attack_mod=0; spl_defense_mod=0; speed_mod=0} in
       let out_mon = List.hd sl in
@@ -295,7 +296,6 @@ let handle_step g ra ba =
     is currently an active steammon and false otherwise. assumes that this item
     usage does not violate any rules. *)
   let item_on_mon item mon active color : steammon = 
-
     (*applies ether to a single move. returns the move with additional pp.*)
     let ether move = 
       let new_pp = min (move.pp_remaining + 5) move.max_pp in
@@ -328,6 +328,8 @@ let handle_step g ra ba =
       {mon with mods = mods'}
     | _ -> mon in
 
+  (*returns the position of the given item in the inventory list.
+    Ether is 1, MaxPotion is 2, etc. *)
   let item_index item =
     match item with
     | Ether -> 1
@@ -347,11 +349,9 @@ let handle_step g ra ba =
       | h::t -> if n = 1 then h else nth_entry lst (n - 1) in
     nth_entry inv (item_index item) in
 
-
   (*returns true if the given item can be used for the given steammon and team.
     false otherwise.*)
-  let valid_item_use item s_name sl inv =
-    
+  let valid_item_use item s_name sl inv =    
     (*let rec mon_present lst s_name =
       match lst with
       | [] -> false
@@ -365,7 +365,7 @@ let handle_step g ra ba =
   (*returns an inventory with one copy of the given item taken away from the
     given inventory. if the item is already at 0 copies, then it stays 
     at 0. *)
-  let consume_item item inv =
+  let consume_item item inv : inventory =
     let rec replace_el e lst i n =
       match lst with 
       | [] -> []
@@ -374,9 +374,14 @@ let handle_step g ra ba =
     if amount = 0 then inv else replace_el (amount - 1) inv 1 (item_index item) in
  
   (*fuck add GUI updates*)
-  (*the method called to perform an item action for a team.*)
+  (*the method called to perform an item action for a team.
+    side effects: an item may be consumed and a steammon's condition
+    may change. *)
   let use_item item s_name color data : unit =
-
+    (*if the list contains a steammon of the same species as the given
+      steammon, then it is replaced with the given steammon and the new list
+      is returned. if the steammon is not found, then the original list is
+      returned. *)
     let rec replace_mon lst mon : steammon list =
       match lst with
       | [] -> []
@@ -448,13 +453,20 @@ let handle_step g ra ba =
     | None -> mon in
 
   (*returns true if a steammon in the party is already asleep*)
-  let sleep_clause sl : bool =
+  let sleep_clause color data : bool =
+    let sl = match color with
+             | Red -> data.ra::data.rp
+             | Blue -> data.ba::data.bp in
     List.fold_left (fun b mon -> mon.status = Some Asleep) false sl in
 
   (*returns true if a steammon in the party is already frozen*)
-  let freeze_clause sl : bool =
+  let freeze_clause color data : bool =
+    let sl = match color with
+             | Red -> data.ra::data.rp
+             | Blue -> data.ba::data.bp in
     List.fold_left (fun b mon -> mon.status = Some Frozen) false sl in
 
+  (*returns the modifier multiplier of the steammon for the given stat*)
   let modifier mon stt : float = 
     let stage = match stt with
     | Atk -> mon.mods.attack_mod
@@ -465,6 +477,9 @@ let handle_step g ra ba =
     multiplier_of_modifier stage in
 
   (*add modifiers*)
+  (*takes two steammon and determines which color should perform its action
+    first. the first steammon is team Red and the second steammon is team
+    Blue. *)
   let first_action rs bs : color =
     let speed s = 
       if s.status = Some Paralyzed then 
@@ -478,24 +493,40 @@ let handle_step g ra ba =
     else if Random.int 2 = 0 then Red 
     else Blue in
 
+  (*determines if the given move occurs. if the steammon does not know
+    the move, then None is returned. if the move is out of pp, then the move
+    struggle is returned. note: this is not the step that determines whether
+    the move hits or misses.*)
   let move_occur mon move_name : move option =
     (*exception if move not found?*)
+    let struggle = Table.find movepool "Struggle" in
     match mon.status, get_move_from_steammon mon move_name with
     | _ , None -> None
     | Some Asleep, _ -> None
     | Some Frozen, _ -> None
     | Some Paralyzed, Some m -> 
-        if (Random.int 100 + 1) <= cPARALYSIS_CHANCE then None else Some m
+        if (Random.int 100 + 1) <= cPARALYSIS_CHANCE then None
+        else if m.pp_remaining < 1 then Some struggle 
+             else Some m
     | Some Confused, Some m -> 
-        if (Random.int 100 + 1) <= cSELF_ATTACK_CHANCE then Some (Table.find movepool "SelfAttack") else Some m
+        if (Random.int 100 + 1) <= cSELF_ATTACK_CHANCE then 
+          Some (Table.find movepool "SelfAttack")
+        else if m.pp_remaining < 1 then
+          Some struggle
+        else
+          Some m
     | Some _ , Some m
-    | None , Some m -> if m.pp_remaining < 1 then None else Some m in
+    | None , Some m -> if m.pp_remaining < 1 then Some struggle else Some m in
 
+  (*returns true at a certain probability. true means that the move hits 
+    and false means that the move misses.*)
   let move_hit m : bool =
     if m.power = 0 && m.target = User then true
     else if (Random.int 100 + 1) < m.accuracy then true
     else false in
 
+  (*determines how much damage the move deals based on the given user
+    and target pair. *)
   let move_dmg m user_mon target_mon : int = 
     if m.power = 0 then 0 else
     let stab = 
@@ -526,7 +557,8 @@ let handle_step g ra ba =
 
     (calculate_damage atk def m.power multiplier) in
 
-  let move_effects (el, target, chance) (user, opp) dmg attacker : steammon*steammon =
+  
+  let move_effects (el, target, chance) (user, opp) dmg attacker data : steammon*steammon =
     let color = if target = User then attacker else invert_color attacker in
     let stat_mod mods stt i : modifier =
       let alter_stage old_stage add =
@@ -538,14 +570,22 @@ let handle_step g ra ba =
       | SpD -> {mods with spl_defense_mod = alter_stage mods.spl_defense_mod i}
       | Spe -> {mods with speed_mod = alter_stage mods.speed_mod i} in
 
+    (*increments the remaining pp of the given move and returns the altered
+      move. pp_remaining cannot go over max_pp. *)
     let add_pp m i : move =
       {m with pp_remaining = min (m.pp_remaining + i) m.max_pp} in
 
+    (*performs a single effect on a steammon and returns the altered steammon.*)
     let single_effect (t: steammon) eff : steammon =
+      if t.status = None then t else
       match eff with
       | InflictStatus s -> 
-          result.effects <- result.effects@[(InflictedStatus s, color)];
-          {t with status = Some s}
+          if (s = Asleep && sleep_clause color data) || (s = Frozen && freeze_clause color data) then
+            t
+          else begin
+            result.effects <- result.effects@[(InflictedStatus s, color)];
+            {t with status = Some s}
+          end
       | StatModifier (s, i) -> {t with mods = stat_mod t.mods s i} (*assume that we just add i*)
       | RecoverPercent p -> 
           let new_hp = min (t.curr_hp + t.max_hp*p/100) t.max_hp in
@@ -582,34 +622,55 @@ let handle_step g ra ba =
       end
     else (user, opp) in
 
+  (*replaces the move with the same name as the given move in the steammon.
+    the altered steammon is returned. if the steammon does not know the move,
+    then the steammon is returned unchanged.*)
+  let replace_move mon (move: move) : steammon =
+    let name = move.name in
+    if mon.first_move.name = name then {mon with first_move = move}
+    else if mon.second_move.name = name then {mon with second_move = move}
+    else if mon.third_move.name = name then {mon with third_move = move}
+    else if mon.fourth_move.name = name then {mon with fourth_move = move}
+         else mon in
+
+  (*decrements the pp of the given move by one.
+    side effects: the active steammon in the given team is updated
+    with the decremented pp. *)
+  let reduce_pp move color data : unit =
+    let move' = {move with pp_remaining = move.pp_remaining - 1} in
+    match color with
+    | Red -> data.ra <- replace_move data.ra move'
+    | Blue -> data.ba <- replace_move data.ba move' in
+
   let perform_move move_name (rs, bs) attacker data : unit =
     let dmg_and_effects (user, opp) move : steammon*steammon =
       match move.target with
       | User -> let dmg = move_dmg move user user in
         let matchup = calculate_type_matchup move.element (user.first_type, user.second_type) in
-        result.damage <- dmg;
+        result.damage <- min dmg user.curr_hp;
         result.effectiveness <- (fst matchup);
         if dmg >= user.curr_hp then ({user with curr_hp = 0}, opp) else begin
           let user' = {user with curr_hp = user.curr_hp - dmg} in
           match move.effects with
           | None -> (user', opp)
-          | Some eff -> move_effects eff (user', opp) dmg attacker
+          | Some eff -> move_effects eff (user', opp) dmg attacker data
         end   
       | Opponent -> let dmg = move_dmg move user opp in
         let matchup = calculate_type_matchup move.element (opp.first_type, opp.second_type) in
-        result.damage <- dmg;
+        result.damage <- min dmg user.curr_hp;
         result.effectiveness <- (fst matchup);
         if dmg >= opp.curr_hp then (user, {opp with curr_hp = 0}) else begin
           let opp' = {opp with curr_hp = opp.curr_hp - dmg} in
           match move.effects with
           | None -> (user, opp')
-          | Some eff -> move_effects eff (user, opp') dmg attacker
+          | Some eff -> move_effects eff (user, opp') dmg attacker data
         end in
 
     let move_helper (user, opp) : steammon*steammon =
       match move_occur user move_name with
       | None -> (user, opp)
       | Some move when (move_hit move) -> 
+          reduce_pp move attacker data;
           result.name <- move.name;
           result.element <- move.element;
           result.from <- attacker;
@@ -618,6 +679,7 @@ let handle_step g ra ba =
           result.effects <- [];
           dmg_and_effects (user, opp) move
       | Some move -> 
+          reduce_pp move attacker data;
           result.name <- move.name;
           result.element <- move.element;
           result.from <- attacker;
@@ -643,6 +705,7 @@ let handle_step g ra ba =
         add_update(UpdateSteammon (rs'.species, rs'.curr_hp, rs'.max_hp, Red));
         add_update(UpdateSteammon (bs'.species, bs'.curr_hp, bs'.max_hp, Blue)); in
 
+  (*returns true if either of the steammon have fainted. false otherwise*)
   let check_faint (user, opp) : bool =
     user.curr_hp <= 0 || opp.curr_hp <= 0 in
 
