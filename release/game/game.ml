@@ -8,7 +8,6 @@ open Studentutil
 (* You have to implement this. Change it from int to your own state type*)
 type game = Game of game_status_data
 type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
-
 type battle_data = {
   mutable ra: steammon;
   mutable ba: steammon;
@@ -18,7 +17,6 @@ type battle_data = {
   mutable binv: int list;
   mutable credits: int*int
 }
-type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
 let battle_error = ref false
 let state = ref Init
 let draftRD = ref 1
