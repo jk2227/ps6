@@ -32,7 +32,7 @@ let getAvgCost (pool:steammon list):int=
 
 (** checks to make sure that 2 costs are at least 10 credits apart *)
 let isWithinCostRange (cost:int) (otherCost:int):bool = 
-  abs(cost-otherCost) <= 10
+  abs(cost-otherCost) <= 50
 
 (** when our bot gets first pick or sees no more steammon on the
  * opponent's team to counter, then we find a preferrable steammon
@@ -85,7 +85,8 @@ let handleSingleDraft (s:steammon) (pool:steammon list):steammon=
     (Botutils.pairStat (fun mon -> Botutils.battleTurnout mon s) pool) in
   let okMons = Botutils.extractThing (List.filter (fun a -> fst a > 0) 
     sortedTuples) in
-  minCostDiffMon okMons s
+  List.hd okMons
+  (*minCostDiffMon okMons s*)
 
 (** finds the most expensive steammon we can afford with creds number
  * of credits left to spend *)
@@ -93,22 +94,6 @@ let makeTheMostOf (pool:steammon list) (creds:int):steammon =
   let filtered = List.filter (fun a -> a.cost <= creds) pool in
   List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
     && (e.cost<creds) then e else acc) (List.hd filtered) filtered
-
-(*let tankPick c gsd pool = 
-  let ((_,_,cr),(_,_,cb)) = gsd in
-  let rc = if c = Red then cr else cb in 
-  let tanks = Botutils.orderDescBy pool 
-    (fun s -> s.max_hp*s.defense*s.spl_defense) in
-  let potatoes = List.filter 
-  (fun a -> a.cost <= min rc cSTEAMMON_CREDITS/(cNUM_PICKS-2)) tanks in
-  let pick = List.hd potatoes in
-    PickSteammon (pick.species)*)
-
-(*let strikerPick c gsd pool =
-  let strikers = Botutils.orderDescBy pool
-    (fun s -> s.attack*s.spl_attack*s.speed) in
-  let asparagus = List.filter
-  ()*)
 
 (** handles our bot's response to a PickRequest in drafting.
  * when our bot gets first pick from the pool or needs to pick
@@ -139,7 +124,7 @@ let pickReq1 c gsd sp =
             PickSteammon (pick.species)
             else
             let pick = handleSingleDraft (List.hd newMons) sp in
-            oppTeam := (List.hd newMons)::(!oppTeam);
+            oppTeam := (List.hd newMons)::(!oppTeam); (*POTENTIAL PROB*)
             PickSteammon (pick.species)
 
 (** handles our bot's response to StarterRequest *)
