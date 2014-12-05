@@ -62,7 +62,7 @@ let battleTurnout (s1: steammon) (s2: steammon) : int =
   else
    s1Life - s2Life
 
-(* returns the steammon revived *)
+(* returns the steammon as if it were revived *)
 let postRevive (s: steammon) = 
   {s with curr_hp = s.max_hp/2}
 
@@ -125,15 +125,15 @@ let bestSm (smlst: steammon list) (s: steammon) : steammon =
   | h::t -> h
   | _ -> failwith "Something bad happened"
 
-(*  *)
+(* survivability ranking with indiv capabilities shifted by some constant factor *)
 let mostSurvSmWithShiftAndDeath (smlst: (int*steammon*bool) list) (s: steammon) : (int*steammon*bool) list= 
   extractThing (List.sort greaterStat (pairStat (fun (a,b,_) -> a + turnsToLive b s) smlst))
 
-(* *)
+(* ranks steammon by turns to get killed by target  *)
 let mostSurvSm (smlst: steammon list) (s: steammon) : steammon list = 
   List.map (fun (_,x,_) -> x) (mostSurvSmWithShiftAndDeath (List.map (fun x -> (0, x, true)) smlst) s)
 
-(* *)
+(* ranks steammon by turns req to kill target *)
 let fastestKiller (smlst: steammon list) (s: steammon) : steammon list = 
   extractThing (List.sort greaterStat (pairStat (fun x -> fst (bestMvWithDmg x s)) smlst))
 
@@ -147,14 +147,11 @@ let rec firstLiving (smlst: steammon list) =
 let numLiving (smlst: steammon list) =
   List.fold_left (fun a e -> if e.curr_hp > 0 then a+1 else a) 0 smlst
 
+(* whether or not this steammon has offensive capabilities *)
 let hasAttack sm = 
   let moves = [sm.first_move;sm.second_move;sm.third_move;sm.fourth_move] in
   List.fold_left (fun a e -> a || (e.power > 0)) false moves
 
-(*let pickingRanker (centralCost: int) : steammon -> steammon -> int = 
-  fun me them ->
-    let costDiff = abs (sm.cost - centralCost) in 
-    let battleTurnout*)
 (* BOT STRATEGIES *)
 (* PICK STEAMMON THAT CAN SURVIVE MOST MINDLESS PUMMELING *)
 let survivableMK1 (meActive:steammon) (meReserve:steammon list) (them:steammon) (inv:inventory) = 
