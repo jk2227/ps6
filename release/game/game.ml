@@ -19,7 +19,7 @@ type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
 let battle_error = ref false
 let state = ref Init
 let draftRD = ref 1
-let draftColor = ref Red 
+let draftColor = ref Blue 
 let draftpool = Initialization.mon_table 
 let movepool = Initialization.move_table
 let first = ref Red
@@ -104,7 +104,12 @@ let handle_step g ra ba =
   (*for drafting purposes, sets the player to draft next if the round 
   that we are on is odd*)
   let changeColor () = 
-    if !draftRD mod 2 = 1 then draftColor := invert_color !draftColor
+    if !draftRD mod 2 = 1 then begin
+      draftColor := invert_color !draftColor; 
+      (1=1)
+    end 
+    else 
+      (0=1) 
   in 
 
   (*adds draft related update to the gui, remove the steammon from the
@@ -147,6 +152,26 @@ let handle_step g ra ba =
       Some(Request(PickInventoryRequest gsd)))
   in
 
+  (*main helper method for draft to avoid repetetive code*)
+  (*requires: game status data, the color of team drafting, steammon that is 
+  being drafted, a bool that checks the end of the game, and a bool that
+  checks whether cost hits 0 or not*)
+  (*returns: an apprpriate game_output*)
+  let draftHelper gsd ogColor s checkEnd zero = 
+     let switch = changeColor () in 
+     let pr =  Some(Request(PickRequest(!draftColor,gsd, 
+                hash_to_list (Initialization.move_table), 
+                hash_to_list(draftpool)))) in 
+     draftupdate s ogColor; 
+     let gsd = draftGSD gsd ogColor s zero in 
+     if checkEnd then 
+        endDraft gsd 
+     else match ogColor, switch with 
+     | Red, true 
+     | Blue, false -> (None, gsd, None, pr)
+     | Red, false 
+     | Blue, true -> (None, gsd, pr , None)
+  in
   (*handles the draft part*)
   (*requires: game status data and name of steammon to draft*)
   (*returns: an appropriate game status data representing the current state of
@@ -159,58 +184,19 @@ let handle_step g ra ba =
         else Table.find draftpool name 
       in 
       match !draftColor with 
-      | Red when List.length rsl < cNUM_PICKS -> begin
-          changeColor ();
-          if s.cost < rcred then begin 
-            draftupdate s Red; 
-            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red s false in
-            if checkEnd then 
-              endDraft gsd 
-            else 
-            (None, gsd, None, 
-              Some(Request(PickRequest(!draftColor,gsd, 
-                hash_to_list (Initialization.move_table), 
-                hash_to_list(draftpool)))))
-          end
-          else begin
-            let mon = findMin () in 
-            draftupdate mon Red; 
-            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Red mon 
-            (mon.cost > rcred) in
-            if checkEnd then 
-              endDraft gsd 
-            else 
-              (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
-                hash_to_list (Initialization.move_table), 
-                hash_to_list(draftpool)))))   
-          end  
-        end
-      | Blue when List.length bsl < cNUM_PICKS -> begin
-          changeColor ();
-          if s.cost < bcred then begin 
-            draftupdate s Blue; 
-            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue s false in
-            if checkEnd then 
-              endDraft gsd 
-            else
-              (None, gsd, None, 
-              Some(Request(PickRequest(!draftColor,gsd, 
-                hash_to_list (Initialization.move_table), 
-                hash_to_list(draftpool)))))
-          end
-          else begin
-            let mon = findMin () in 
-            draftupdate mon Blue; 
-            let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue mon 
-            (mon.cost > bcred) in
-            if checkEnd then 
-              endDraft gsd 
-            else
-            (None, gsd, None, Some(Request(PickRequest(!draftColor,gsd, 
-                hash_to_list (Initialization.move_table), 
-                hash_to_list(draftpool)))))   
-          end  
-        end
+      | Red when List.length rsl < cNUM_PICKS -> 
+        if s.cost < rcred then 
+          draftHelper ((rsl,ri,rcred),(bsl,bi,bcred)) Red s checkEnd false
+        else let mon = findMin () in 
+          draftHelper ((rsl,ri,rcred),(bsl,bi,bcred)) Red mon checkEnd 
+            (mon.cost > rcred)
+
+      | Blue when List.length bsl < cNUM_PICKS -> 
+        if s.cost < bcred then 
+          draftHelper ((rsl,ri,rcred),(bsl,bi,bcred)) Blue s checkEnd false
+        else let mon = findMin () in 
+          draftHelper ((rsl,ri,rcred),(bsl,bi,bcred)) Blue mon checkEnd 
+            (mon.cost > bcred)
        | _ -> failwith "should never reach here"
       in
 
@@ -265,12 +251,12 @@ let handle_step g ra ba =
         hash_to_list(draftpool)))), None)
     end
     
-    else begin 
+    else begin  
       draftColor := Blue; 
       (None, gsd, None, Some(Request(PickRequest(Blue,gsd,
         hash_to_list (Initialization.move_table), 
         hash_to_list(draftpool)))))
-    end 
+    end
 
   in
 
