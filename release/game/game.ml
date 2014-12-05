@@ -157,7 +157,7 @@ let handle_step g ra ba =
       (List.length bsl = cNUM_PICKS-1)) in 
       let s = if Table.mem draftpool name = false then findMin () 
         else Table.find draftpool name 
-      in
+      in 
       match !draftColor with 
       | Red when List.length rsl < cNUM_PICKS -> begin
           changeColor ();
@@ -187,7 +187,7 @@ let handle_step g ra ba =
         end
       | Blue when List.length bsl < cNUM_PICKS -> begin
           changeColor ();
-          if s.cost < rcred then begin 
+          if s.cost < bcred then begin 
             draftupdate s Blue; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue s false in
             if checkEnd then 
@@ -202,7 +202,7 @@ let handle_step g ra ba =
             let mon = findMin () in 
             draftupdate mon Blue; 
             let gsd = draftGSD ((rsl,ri,rcred),(bsl,bi,bcred)) Blue mon 
-            (mon.cost > rcred) in
+            (mon.cost > bcred) in
             if checkEnd then 
               endDraft gsd 
             else
@@ -586,7 +586,7 @@ let handle_step g ra ba =
     | Some _ , Some m
     | None , Some m -> 
       if m.pp_remaining < 1 then begin 
-        add_update(Message "no pp"); Some struggle 
+       Some struggle 
       end 
       else Some m in
 
@@ -726,7 +726,6 @@ let handle_step g ra ba =
   let replace_move mon (m: move) : steammon =
     let name = m.name in
     if mon.first_move.name = name then begin 
-      print_endline "help"; 
       {mon with first_move = m} 
     end
     else if mon.second_move.name = name then {mon with second_move = m}
@@ -738,7 +737,6 @@ let handle_step g ra ba =
     side effects: the active steammon in the given team is updated
     with the decremented pp. *)
   let reduce_pp move color data : unit =
-    print_int move.pp_remaining;
     let move' = {move with pp_remaining = (move.pp_remaining - 1)} in
     match color with
     | Red -> data.ra <- replace_move data.ra move'
@@ -941,8 +939,9 @@ let handle_step g ra ba =
 
   (*battle phase*)
     (*first step: both players select their starting pokemon*)
-  | Game(rtd, btd), Action(SelectStarter rs), Action(SelectStarter bs) when 
+  | Game gsd, Action(SelectStarter rs), Action(SelectStarter bs) when 
     !state = BattleSelect -> 
+      copy_game_to_data (Game gsd) data;
       switch_in rs Red data; switch_in bs Blue data;
       state := Battle;
       alive_response data (data.ra, data.ba)
@@ -1124,4 +1123,4 @@ let init_game () =
   (Game(([],[],cSTEAMMON_CREDITS),([],[],cSTEAMMON_CREDITS)),
       TeamNameRequest,TeamNameRequest, 
       hash_to_list (Initialization.move_table), 
-      hash_to_list(draftpool))
+      hash_to_list(draftpool))  
