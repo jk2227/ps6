@@ -3,10 +3,13 @@ open Util
 open Constants
 open Netgraphics
 open Initialization
+open Studentutil
 
 (* You have to implement this. Change it from int to your own state type*)
 type game = Game of game_status_data
-type andy = {
+type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
+
+type battle_data = {
   mutable ra: steammon;
   mutable ba: steammon;
   mutable rp: steammon list;
@@ -15,31 +18,16 @@ type andy = {
   mutable binv: int list;
   mutable credits: int*int
 }
-type game_state = Init | Drafting | Inventory | Battle | BattleSelect | Winner
-let battle_error = ref false
-let state = ref Init
-let draftRD = ref 1
-let draftColor = ref Red 
-let draftpool = Initialization.mon_table 
-let movepool = Initialization.move_table
-let first = ref Red
-let dummymove = {name=" "; element=Typeless; target=User; max_pp=0; 
-  pp_remaining=0; power=0; accuracy=0;effects=None}
-let no_mods = {attack_mod=0; defense_mod=0; spl_attack_mod=0; 
-  spl_defense_mod=0; speed_mod=0}
-let dummymon = {species="dummy"; curr_hp=0; max_hp=0; first_type=None; 
-  second_type=None; first_move=dummymove; second_move=dummymove; 
-  third_move=dummymove; fourth_move=dummymove; attack=0; spl_attack=0; 
-  defense=0; spl_defense=0; speed=0; status=None; mods=no_mods; cost=0}
 let data = {
-  ra=dummymon;
-  ba=dummymon;
+  ra=Studentutil.dummymon;
+  ba=Studentutil.dummymon;
   rp=[];
   bp=[];
   rinv=[];
   binv=[];
   credits=(31,10)
 }
+
 type move_result_mut = {
   mutable name: string;
   mutable element: steamtype;
@@ -54,6 +42,27 @@ type move_result_mut = {
 let result = {name="wumpus"; element=Typeless; from=Red; toward=Blue;
               damage=0; hit=Hit; effectiveness=Regular; effects=[]; dummy=0}
 
+let battle_error = ref false
+let state = ref Init
+let draftRD = ref 1
+let draftColor = ref Red 
+let draftpool = Initialization.mon_table 
+let movepool = Initialization.move_table
+let first = ref Red
+
+(*
+ * Convert to the game_status_data defined in definitions.ml
+ *)
+let game_datafication g = match g with 
+  | Game x -> x 
+
+(*
+ * Convert to type game from game_status_data
+ *)  
+let game_from_data game_data = Game (game_data)
+
+(*takes a value of type game and copies the information into the 
+  mutable fields of data, which is of type battle_data *)
 let copy_game_to_data g data : unit =
   let Game gsd = g in
   let (rtd, btd) = gsd in
@@ -66,26 +75,19 @@ let copy_game_to_data g data : unit =
   data.binv <- bi;
   data.credits <- (rc, bc)
 
-let andy_to_gsd a : game_status_data =
-  let rtd = (a.ra::a.rp, a.rinv, fst a.credits)
-  and btd = (a.ba::a.bp, a.binv, snd a.credits) in
+(*takes a value of type battle_data, constructs a corresponding
+  value of type game_status_data, and returns it.*)
+let data_to_gsd d : game_status_data =
+  let rtd = (d.ra::d.rp, d.rinv, fst d.credits)
+  and btd = (d.ba::d.bp, d.binv, snd d.credits) in
   (rtd, btd)
 
+(*takes a value of the record type move_result_mut and converts
+  it into a value of type move_result *)
 let move_result_convert (mrm: move_result_mut) : move_result =
   {name=mrm.name; element=mrm.element; from=mrm.from; toward=mrm.toward;
    damage=mrm.damage; hit=mrm.hit; effectiveness=mrm.effectiveness; 
    effects=mrm.effects}
-
-(*
- * Convert to the game_status_data defined in definitions.ml
- *)
-let game_datafication g = match g with 
-  | Game x -> x 
-
-(*
- * Convert to type game from game_status_data
- *)  
-let game_from_data game_data = Game (game_data)
 
 (* handle_step gs ra ba is used to generate the next state of the game.
  * gs is the current game state entering this turn.
@@ -298,11 +300,6 @@ let handle_step g ra ba =
     | _ -> failwith "Something went really wrong..."
   in 
 
-  let rec get_mon lst name : steammon option =
-    match lst with
-    | [] -> None
-    | h::t -> if h.species = name then Some h else get_mon t name in
-
   (*makes the given steammon the active steammon for team 'color'.
     the steammon switched out has its modifiers removed. 
     if the designated steammon is not in the team, then nothing
@@ -311,8 +308,6 @@ let handle_step g ra ba =
     (*helper function that returns the rearranged steammon list and the
       mods removed from the switched-out steammon *)
     let switch_helper sl : steammon list =
-      let no_mods = {attack_mod=0; defense_mod=0; spl_attack_mod=0; 
-        spl_defense_mod=0; speed_mod=0} in
       let out_mon = List.hd sl in
       let sl' = {out_mon with mods = no_mods}::(List.tl sl) in
       (*returns the given list with the given mon removed. preserves order.*)
@@ -321,6 +316,7 @@ let handle_step g ra ba =
         | [] -> []
         | h::t -> if h.species = mon.species then t 
                     else h::(remove_mon t mon) in
+      (*gives the nth steammon in the steammon list*)
       let rec nth_mon lst n : steammon =
         match lst with
         | [] -> failwith "should not be reached"
@@ -385,54 +381,7 @@ let handle_step g ra ba =
       let mods' = {mon.mods with speed_mod = mon.mods.speed_mod + 1} in
       {mon with mods = mods'}
     | _ -> mon in
-
-  (*returns the position of the given item in the inventory list.
-    Ether is 1, MaxPotion is 2, etc. *)
-  let item_index item =
-    match item with
-    | Ether -> 1
-    | MaxPotion -> 2
-    | Revive -> 3
-    | FullHeal -> 4
-    | XAttack -> 5
-    | XDefense -> 6
-    | XSpeed -> 7 in
-
-  (*returns the number of copies of the item in the inventory*)
-  let num_items_left item inv =
-    (*returns the nth element of the given list*)
-    let rec nth_entry lst n =
-      match lst with 
-      | [] -> 0 (*should not be reached for the purposes of PokeJouki*)
-      | h::t -> if n = 1 then h else nth_entry lst (n - 1) in
-    nth_entry inv (item_index item) in
-
-  (*returns true if the given item can be used for the given steammon and team.
-    false otherwise.*)
-  let valid_item_use item s_name sl inv =    
-    (*let rec mon_present lst s_name =
-      match lst with
-      | [] -> false
-      | h::t -> (h.species = s_name) || (mon_present t s) in*)
-    if num_items_left item inv < 1 then false else
-    match get_mon sl s_name , item with
-    | None , _ -> false
-    | Some mon , Revive -> mon.curr_hp = 0
-    | Some mon, _ -> mon.curr_hp > 0 in
-
-  (*returns an inventory with one copy of the given item taken away from the
-    given inventory. if the item is already at 0 copies, then it stays 
-    at 0. *)
-  let consume_item item inv : inventory =
-    let rec replace_el e lst i n =
-      match lst with 
-      | [] -> []
-      | h::t -> if i = n then e::t else h::(replace_el e t (i+1) n) in
-    let amount = num_items_left item inv in
-    if amount = 0 then inv 
-    else replace_el (amount - 1) inv 1 (item_index item) in
  
-  (*fuck add GUI updates*)
   (*the method called to perform an item action for a team.
     side effects: an item may be consumed and a steammon's condition
     may change. *)
@@ -478,6 +427,20 @@ let handle_step g ra ba =
         end
     | _ -> () (*invalid item usage*) in
 
+  (*returns true if a steammon in the party is already asleep*)
+  let sleep_clause color data : bool =
+    let sl = match color with
+             | Red -> data.ra::data.rp
+             | Blue -> data.ba::data.bp in
+    List.fold_left (fun b mon -> mon.status = Some Asleep) false sl in
+
+  (*returns true if a steammon in the party is already frozen*)
+  let freeze_clause color data : bool =
+    let sl = match color with
+             | Red -> data.ra::data.rp
+             | Blue -> data.ba::data.bp in
+    List.fold_left (fun b mon -> mon.status = Some Frozen) false sl in
+
   (*if the given steammon is asleep, frozen, or confused, a recovered steammon
     is returned at a certain probability.*)
   let status_recover mon color : steammon =
@@ -517,49 +480,6 @@ let handle_step g ra ba =
     | Some _
     | None -> mon in
 
-  (*returns true if a steammon in the party is already asleep*)
-  let sleep_clause color data : bool =
-    let sl = match color with
-             | Red -> data.ra::data.rp
-             | Blue -> data.ba::data.bp in
-    List.fold_left (fun b mon -> mon.status = Some Asleep) false sl in
-
-  (*returns true if a steammon in the party is already frozen*)
-  let freeze_clause color data : bool =
-    let sl = match color with
-             | Red -> data.ra::data.rp
-             | Blue -> data.ba::data.bp in
-    List.fold_left (fun b mon -> mon.status = Some Frozen) false sl in
-
-  (*returns the modifier multiplier of the steammon for the given stat*)
-  let modifier mon stt : float = 
-    let stage = match stt with
-    | Atk -> mon.mods.attack_mod
-    | Def -> mon.mods.defense_mod
-    | SpA -> mon.mods.spl_attack_mod
-    | SpD -> mon.mods.spl_defense_mod
-    | Spe -> mon.mods.speed_mod in
-    multiplier_of_modifier stage in
-
-  (*add modifiers*)
-  (*takes two steammon and determines which color should perform its action
-    first. the first steammon is team Red and the second steammon is team
-    Blue. *)
-  let first_action rs bs : color =
-    let speed s = 
-      if s.status = Some Paralyzed then 
-        int_of_float( (float_of_int s.speed) *. 
-          (multiplier_of_modifier s.mods.speed_mod) /. 4. )
-      else
-        int_of_float( (float_of_int s.speed) *. 
-          (multiplier_of_modifier s.mods.speed_mod) ) in 
-    let rspeed = speed rs
-    and bspeed = speed bs in
-    if rspeed > bspeed then Red 
-    else if bspeed > rspeed then Blue 
-    else if Random.int 2 = 0 then Red 
-    else Blue in
-
   (*determines if the given move occurs. if the steammon does not know
     the move, then None is returned. if the move is out of pp, then the move
     struggle is returned. note: this is not the step that determines whether
@@ -590,53 +510,14 @@ let handle_step g ra ba =
       end 
       else Some m in
 
-  (*returns true at a certain probability. true means that the move hits 
-    and false means that the move misses.*)
-  let move_hit m : bool =
-    if m.power = 0 && m.target = User then true
-    else if (Random.int 100 + 1) < m.accuracy then true
-    else false in
-
-  (*determines how much damage the move deals based on the given user
-    and target pair. *)
-  let move_dmg m user_mon target_mon : int = 
-    if m.power = 0 then 0 else
-    let stab = 
-      match user_mon.first_type, user_mon.second_type with 
-      | None, None -> 1.0
-      | Some t, None -> if t = m.element then cSTAB_BONUS else 1.0
-      | None, Some u -> if u = m.element then cSTAB_BONUS else 1.0
-      | Some t, Some u -> if t = m.element || u = m.element then cSTAB_BONUS 
-                           else 1.0
-    and typemult = 
-      snd (calculate_type_matchup m.element (target_mon.first_type, 
-        target_mon.second_type))
-    and burn =
-      match user_mon.status with
-      | Some Burned -> if is_special m.element then 1.0 else cBURN_WEAKNESS
-      | Some _ -> 1.0
-      | None -> 1.0 
-    and rand = (Random.int (100 - cMIN_DAMAGE_RANGE + 1)) + cMIN_DAMAGE_RANGE in
-    let multiplier = stab*.typemult*.burn*.(float_of_int rand)/.(100.0) in
-
-    let atk = if is_special m.element then 
-      int_of_float( (float_of_int user_mon.spl_attack)*.(modifier user_mon SpA)) 
-    else
-      int_of_float( (float_of_int user_mon.attack)*.(modifier user_mon Atk) ) in
-
-    let def = if is_special m.element then
-      int_of_float( (float_of_int target_mon.spl_defense) *.
-        (modifier target_mon SpD))
-    else
-      int_of_float( (float_of_int target_mon.defense) *.
-        (modifier target_mon Def)) in
-
-    (calculate_damage atk def m.power multiplier) in
-
-  
+  (*performs move effects with the given active steammon pair and returns
+    the modified steammon *)
   let move_effects (el, target, chance) (user, opp) dmg attacker data : steammon*steammon =
     let color = if target = User then attacker else invert_color attacker in
+    (*takes a modifier and returns a modifier with i added to the given stat*)
     let stat_mod mods stt i : modifier =
+      (*adds a value to the old_stage to produce the new stage, but also makes
+        sure it stays between -6 and 6 *)
       let alter_stage old_stage add =
         if i > 0 then min 6 (old_stage + add) else max (-6) (old_stage + add) in
       match stt with
@@ -720,19 +601,6 @@ let handle_step g ra ba =
       end
     else (user, opp) in
 
-  (*replaces the move with the same name as the given move in the steammon.
-    the altered steammon is returned. if the steammon does not know the move,
-    then the steammon is returned unchanged.*)
-  let replace_move mon (m: move) : steammon =
-    let name = m.name in
-    if mon.first_move.name = name then begin 
-      {mon with first_move = m} 
-    end
-    else if mon.second_move.name = name then {mon with second_move = m}
-    else if mon.third_move.name = name then {mon with third_move = m}
-    else if mon.fourth_move.name = name then {mon with fourth_move = m}
-         else mon in
-
   (*decrements the pp of the given move by one.
     side effects: the active steammon in the given team is updated
     with the decremented pp. *)
@@ -742,7 +610,13 @@ let handle_step g ra ba =
     | Red -> data.ra <- replace_move data.ra move'
     | Blue -> data.ba <- replace_move data.ba move' in
 
+  (*performs a move with the given active steammon.
+    side effects: updates the steammon information contained
+    in data. *)
   let perform_move move_name (rs, bs) attacker data : unit =
+    (*performs damage calculation and any move effects and returns the
+      altered steammon
+      side effects: records information about the move into 'result' *)
     let dmg_and_effects (user, opp) move : steammon*steammon =
       match move.target with
       | User -> let dmg = min (move_dmg move user user) user.curr_hp in
@@ -764,20 +638,24 @@ let handle_step g ra ba =
         result.effectiveness <- (fst matchup);
         if dmg = 0 && fst matchup != Ineffective then 
           result.effectiveness <- Regular;
-        if dmg = opp.curr_hp then 
-          (user, {opp with curr_hp = 0}) 
-        else begin
-          let opp' = {opp with curr_hp = opp.curr_hp - dmg} in
-          match move.effects with
-          | None -> (user, opp')
-          | Some eff -> if fst matchup = Ineffective then (user, opp')
-                        else move_effects eff (user, opp') dmg attacker data
-        end in
+        let opp' = {opp with curr_hp = opp.curr_hp - dmg} in
+        match move.effects with
+        | None -> (user, opp')
+        | Some (el, etar, chance) ->
+            if etar = User then 
+              move_effects (el, etar, chance) (user, opp') dmg attacker data
+            else if fst matchup = Ineffective || opp'.curr_hp = 0 then 
+              (user, opp')
+            else
+              move_effects (el, etar, chance) (user, opp') dmg attacker data
+        in
 
+    (*helper method that returns the final altered steammon that result
+      from the move execution*)
     let move_helper (user, opp) : steammon*steammon =
       match move_occur user move_name with
       | None -> 
-          result.name <- "No attack.";
+          result.name <- move_name;
           result.element <- Typeless;
           result.from <- attacker;
           result.toward <- invert_color attacker;
@@ -836,10 +714,6 @@ let handle_step g ra ba =
         add_update(UpdateSteammon (bs'.species, bs'.curr_hp, bs'.max_hp, Blue)); 
       in
 
-  (*returns true if either of the steammon have fainted. false otherwise*)
-  let check_faint (user, opp) : bool =
-    user.curr_hp <= 0 || opp.curr_hp <= 0 in
-
   (*called if either steammon has fainted. does end-of-turn status effects on
     any alive steammon and returns the appropriate game_output *)
   let rec faint_response data (rs, bs) : game_output =
@@ -848,18 +722,18 @@ let handle_step g ra ba =
     add_update(UpdateSteammon (rs.species, rs.curr_hp, rs.max_hp, Red));
     add_update(UpdateSteammon (bs.species, bs.curr_hp, bs.max_hp, Blue));
     match rs.curr_hp , bs.curr_hp with 
-    | 0 , 0 -> let gsd = andy_to_gsd data in 
+    | 0 , 0 -> let gsd = data_to_gsd data in 
       (None, gsd, Some (Request (StarterRequest gsd)), 
         Some (Request(StarterRequest gsd)))
 
     | 0 , _ -> let bs' = status_end bs Blue in data.ba <- bs';
       if bs'.curr_hp <= 0 then faint_response data (rs, bs') else
-      let gsd = andy_to_gsd data in
+      let gsd = data_to_gsd data in
       (None, gsd, Some (Request(StarterRequest gsd)), None)
 
     | _ , 0 -> let rs' = status_end rs Red in data.ra <- rs';
       if rs'.curr_hp <= 0 then faint_response data (rs', bs) else
-      let gsd = andy_to_gsd data in
+      let gsd = data_to_gsd data in
       (None, gsd, None, Some (Request(StarterRequest gsd)))
 
     | _ , _ -> failwith "should not be reached" in
@@ -873,7 +747,7 @@ let handle_step g ra ba =
     data.ba <- bs';
     add_update(UpdateSteammon (rs'.species, rs'.curr_hp, rs'.max_hp, Red));
     add_update(UpdateSteammon (bs'.species, bs'.curr_hp, bs'.max_hp, Blue));
-    let gsd = andy_to_gsd data in
+    let gsd = data_to_gsd data in
     match rs'.curr_hp , bs'.curr_hp with
     | 0 , 0 -> (None, gsd, Some (Request(StarterRequest gsd)), 
         Some (Request(StarterRequest gsd)))
@@ -882,6 +756,8 @@ let handle_step g ra ba =
     | _ , _ -> (None, gsd, Some (Request(ActionRequest gsd)), 
         Some (Request(ActionRequest gsd))) in
 
+  (*a set of preliminary actions performed during the battle phase before
+    each step *)
   let pre_battle_phase () : unit =
     copy_game_to_data g data;
     first := first_action data.ra data.ba;
@@ -893,11 +769,6 @@ let handle_step g ra ba =
     add_update(UpdateSteammon (data.ba.species, 
       data.ba.curr_hp, data.ba.max_hp, Blue)) in
 
-  let rec all_fainted sl : bool =
-    match sl with
-    | [] -> true
-    | h::t -> h.curr_hp = 0 && all_fainted t in
-
   (if !state = BattleSelect && (all_fainted (data.ra::data.rp) || 
     all_fainted (data.ba::data.bp)) then 
       state := Winner);
@@ -908,6 +779,7 @@ let handle_step g ra ba =
   | Game gsd, _ , _ when !state = Winner -> 
       state := Init;
       draftRD := 1;
+      battle_error := false;
       let rsl = data.ra::data.rp and bsl = data.ba::data.bp in
       if all_fainted rsl && all_fainted bsl then (Some Tie, gsd, None, None)
       else if all_fainted rsl then (Some (Winner Blue), gsd, None, None)
