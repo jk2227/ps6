@@ -188,8 +188,9 @@ let handleSingleDraft (s:steammon) (pool:steammon list):steammon=
 
 let makeTheMostOf (pool:steammon list) (creds:int):steammon =
   let filtered = List.filter (fun a -> a.cost <= creds) pool in
-  List.fold_left (fun acc e -> if (creds-e.cost < creds-acc.cost) 
-    && (e.cost<creds) then e else acc) (List.hd filtered) filtered
+  List.fold_left (fun acc e -> 
+    if (e.cost<creds)&&(creds-e.cost < creds-acc.cost) then e else acc) 
+  (List.hd filtered) filtered
 
 (*let tankPick c gsd pool = 
   let ((_,_,cr),(_,_,cb)) = gsd in
@@ -233,6 +234,18 @@ let pickReq1 c gsd sp =
             oppTeam := (List.hd newMons)::(!oppTeam);
             PickSteammon (pick.species)
 
+let startReq1 c gs =
+  let ((mons1,_,_),(mons2,_,_)) = gs in
+    if c = Red
+    then let pick = List.fold_left 
+    (fun acc e -> Botutils.bestSm mons1 (List.hd mons2)) (List.hd mons1) 
+    mons1 in
+    SelectStarter (pick.species)
+    else let pick = List.fold_left
+    (fun acc e -> Botutils.bestSm mons2 (List.hd mons1)) (List.hd mons2) 
+    mons2 in
+    SelectStarter (pick.species)
+
 (* handle_request c r responds to a request r by returning an action. The color c 
  * allows the bot to know what color it is. *)
 let handle_request (c : color) (r : request) : action =
@@ -241,17 +254,18 @@ let handle_request (c : color) (r : request) : action =
     | TeamNameRequest -> SendTeamName(name)
     (* starter pokemon or pokemon replacement. when starting calculate highest expected *)
     | StarterRequest(gs)-> 
-        let ((mons1,_,_),(mons2,_,_)) = gs in
-        if !firstTime = 1 then
-        let pick = if c = Red 
-        then findTheVeryBest mons1 (List.hd mons1) (List.hd mons2)
-        else findTheVeryBest mons2 (List.hd mons2) (List.hd mons1)
-        in SelectStarter (pick.species)
-      else
-        let pick = if c = Red
-        then findWeakest mons1 mons2 (List.hd mons1)
-        else findWeakest mons2 mons1 (List.hd mons2)
-      in firstTime := 1; SelectStarter (pick.species)
+        (*let ((mons1,_,_),(mons2,_,_)) = gs in
+                if !firstTime = 1 then
+                let pick = if c = Red 
+                then findTheVeryBest mons1 (List.hd mons1) (List.hd mons2)
+                else findTheVeryBest mons2 (List.hd mons2) (List.hd mons1)
+                in SelectStarter (pick.species)
+              else
+                let pick = if c = Red
+                then findWeakest mons1 mons2 (List.hd mons1)
+                else findWeakest mons2 mons1 (List.hd mons2)
+              in firstTime := 1; SelectStarter (pick.species)*)
+          startReq1 c gs
     | PickRequest (c, gsd, _, sp) ->
           pickReq1 c gsd sp
           (*tankPick c gsd sp*)
