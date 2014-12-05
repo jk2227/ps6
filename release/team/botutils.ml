@@ -70,7 +70,7 @@ let postRevive (s: steammon) =
  * steammon, return an int > 0 if one is more effective or has better
  * stats than two, etc. *)
 let greaterStat (one : int * 'a) (two : int * 'a) =
-  let ((s1,sm1),(s2,sm2)) = (one, two) in s1 - s2
+  let ((s1,sm1),(s2,sm2)) = (one, two) in s2 - s1
 
 (* given a function that takes a steammon and returns some sort of 
  * stat that is expressed in an integer, and a list of steammon,
@@ -89,6 +89,7 @@ let extractThing (lst : (int * 'a) list) =
  * can do with the most damaging move. *)
 let bestMvWithDmg (attacker: steammon) (defender: steammon) = 
   let mvlst =
+    List.filter (fun m -> m.pp_remaining > 0) 
     [attacker.first_move; attacker.second_move; attacker.third_move; 
     attacker.fourth_move]
   in
@@ -96,8 +97,7 @@ let bestMvWithDmg (attacker: steammon) (defender: steammon) =
     List.sort greaterStat (pairStat (fun m -> finalDmg defender 
     attacker m) mvlst)
   in
-  match List.filter (fun (dmg, m) -> m.pp_remaining > 0) 
-  orderedByDmg with
+  match orderedByDmg with
   | h::t -> h
   | _ -> (0, attacker.first_move)
 
@@ -161,9 +161,9 @@ let survivableMK1 (meActive:steammon) (meReserve:steammon list) (them:steammon) 
   in 
   let monList = match hasRevive with
     | true -> List.map (fun sm -> if sm.curr_hp = 0 
-                                  then (-5,{sm with curr_hp = sm.max_hp / 2},true)
-                                  else (-4,sm, false)) meReserve
-    | false -> List.map (fun x -> (-4, x, false)) (List.filter (fun sm -> sm.curr_hp > 0) meReserve)
+                                  then (-6,postRevive sm,true)
+                                  else (-3,sm, false)) meReserve
+    | false -> List.map (fun x -> (-3, x, false)) (List.filter (fun sm -> sm.curr_hp > 0) meReserve)
   in
   let rankedBySurv = mostSurvSmWithShiftAndDeath ((0,meActive,false)::monList) them in
   match rankedBySurv with 
