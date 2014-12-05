@@ -33,15 +33,6 @@ let handle_request (c : color) (r : request) : action =
         (match (mons, theirmons) with
         | (myActive::inactive, theirActive::theirInactive) ->
           Botutils.survivableMK1 myActive inactive theirActive pack
-        (*
-          let bestSmForJob = Botutils.bestSm mons theirActive in
-            if (battleTurnout myActive theirActive) < 0
-            then SwitchSteammon bestSmForJob.species
-            else
-            (*Todo, account for everyone is bad*)
-              if (not (myActive = bestSmForJob) && battleTurnout myActive bestSmForJob - battleTurnout myActive theirActive > 2)
-              then SwitchSteammon bestSmForJob.species
-              else UseMove (Botutils.bestMv myActive theirActive).name*)
         | _ -> failwith "WHAT IN THE NAME OF ZARDOZ HAPPENED HERE")
     (* Pick all revives, maxpot, fullheal, xatk, xspd, xdef, ether *)
 	 | PickInventoryRequest (gr) -> 

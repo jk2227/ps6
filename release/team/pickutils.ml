@@ -16,13 +16,9 @@ let getUpdatedTeam (current:steammon list):steammon list=
  * the opponent's steammon list from the current turn, return a
  * list of steammon added in the time between the last and 
  * current turn *)
-let rec getNewMons (old:steammon list) (current:steammon list) 
-(return:steammon list):steammon list =
-  match current with 
-  | [] -> return
-  | h::t -> getNewMons old t (List.fold_left 
-    (fun acc e -> if e.species <> h.species then e::acc else acc) 
-  return old)
+let getNewMons (old:steammon list) (current:steammon list) :steammon list =
+  let aisinb = fun a -> List.fold_left (fun ac e -> (e=a)||ac) false in
+  List.fold_left (fun diff e -> if aisinb e old then diff else e::diff) [] current
 
 (** from a pool of steammon, determine the avg price of a mon *)
 let getAvgCost (pool:steammon list):int=
@@ -58,14 +54,18 @@ let firstPick (pool:steammon list):steammon =
     List.hd(darkflying)
   else
     let evaluate (s:steammon):int = 
-    let moves = [s.first_move;s.second_move;s.third_move;s.fourth_move] in
-    List.fold_left (fun acc e -> acc+(int_of_float(float_of_int (e.power)*.
-      float_of_int(e.accuracy)/.100.))) 0 moves
+      let moves = [s.first_move;s.second_move;s.third_move;s.fourth_move] in
+      List.fold_left (fun acc e -> acc+(int_of_float(float_of_int (e.power)*.
+        float_of_int(e.accuracy)/.100.))) 0 moves
     in
     let sortedMons = Botutils.extractThing(List.sort Botutils.greaterStat 
-    (Botutils.pairStat (fun mon -> evaluate mon) pool)) in
-    let suitablyPriceMons = List.filter (fun a -> isWithinCostRange 
-    (a.cost) (getAvgCost pool)) sortedMons in
+      (Botutils.pairStat (fun mon -> evaluate mon) pool))
+    in
+    let suitablyPriceMons = 
+      List.filter (fun a ->
+        Botutils.hasAttack a && isWithinCostRange (a.cost) (getAvgCost pool))
+          sortedMons 
+    in
     match suitablyPriceMons with
     | [] -> failwith "something wrong happened???"
     | h::t -> h
@@ -80,12 +80,12 @@ let minCostDiffMon (pool:steammon list) (theirMon:steammon):steammon=
 (** find a steammon that has a positive battleTurnout against a certain
  * steammon s, and that is as close to the cost of the target steammon
  * s as possible *)
-let handleSingleDraft (s:steammon) (pool:steammon list):steammon=
+let handleSingleDraft (s:steammon) (pool:steammon list):steammon =
+  let noDeadPool = List.filter Botutils.hasAttack pool in
   let sortedTuples = List.sort Botutils.greaterStat 
-    (Botutils.pairStat (fun mon -> Botutils.battleTurnout mon s) pool) in
-  let okMons = Botutils.extractThing (List.filter (fun a -> fst a > 0) 
-    sortedTuples) in
-  List.hd okMons
+    (Botutils.pairStat (fun mon -> Botutils.battleTurnout mon s) noDeadPool) in
+  let chosen = List.hd (Botutils.extractThing (List.filter 
+    (fun a -> fst a > 0) sortedTuples)) in chosen
   (*minCostDiffMon okMons s*)
 
 (** finds the most expensive steammon we can afford with creds number
@@ -102,7 +102,15 @@ let makeTheMostOf (pool:steammon list) (creds:int):steammon =
  * if it is time for our bot to draft its last steammon, we pick
  * the most expensive steammon we can afford with our remaining credits *)
 let pickReq1 c gsd sp =
-          let opp = if c = Red then snd gsd else fst gsd in
+  let ((myMons,_,mycreds),(theirteam,_,_)) = if c = Red then gsd else (snd gsd, fst gsd) in
+  let revisedPool = List.filter Botutils.hasAttack sp in
+  match getNewMons !oppTeam theirteam with
+  | [] -> PickSteammon ((firstPick revisedPool).species)
+  | h::t -> if List.length (myMons) >= cNUM_PICKS-1 
+            then PickSteammon ((makeTheMostOf revisedPool mycreds).species)
+            else let pick = handleSingleDraft h revisedPool in
+              oppTeam := h::(!oppTeam); PickSteammon (pick.species)
+(*          let opp = if c = Red then snd gsd else fst gsd in
           let (monz,_,_) = opp in
           if List.length(monz) = 0 then (*you get first pick*)
           let pick = firstPick sp in
@@ -125,7 +133,7 @@ let pickReq1 c gsd sp =
             else
             let pick = handleSingleDraft (List.hd newMons) sp in
             oppTeam := (List.hd newMons)::(!oppTeam); (*POTENTIAL PROB*)
-            PickSteammon (pick.species)
+            PickSteammon (pick.species)*)
 
 (** handles our bot's response to StarterRequest *)
 let startReq c gs =

@@ -109,6 +109,10 @@ let rec firstLiving (smlst: steammon list) =
 let numLiving (smlst: steammon list) =
   List.fold_left (fun a e -> if e.curr_hp > 0 then a+1 else a) 0 smlst
 
+let hasAttack sm = 
+  let moves = [sm.first_move;sm.second_move;sm.third_move;sm.fourth_move] in
+  List.fold_left (fun a e -> a || (e.power > 0)) false moves
+
 (*let pickingRanker (centralCost: int) : steammon -> steammon -> int = 
   fun me them ->
     let costDiff = abs (sm.cost - centralCost) in 
@@ -122,9 +126,9 @@ let survivableMK1 (meActive:steammon) (meReserve:steammon list) (them:steammon) 
   in 
   let monList = match hasRevive with
     | true -> List.map (fun sm -> if sm.curr_hp = 0 
-                                  then (-3,{sm with curr_hp = sm.max_hp / 2},true)
-                                  else (-2,sm, false)) meReserve
-    | false -> List.map (fun x -> (-2, x, false)) (List.filter (fun sm -> sm.curr_hp > 0) meReserve)
+                                  then (-5,{sm with curr_hp = sm.max_hp / 2},true)
+                                  else (-4,sm, false)) meReserve
+    | false -> List.map (fun x -> (-4, x, false)) (List.filter (fun sm -> sm.curr_hp > 0) meReserve)
   in
   let rankedBySurv = mostSurvSmWithShiftAndDeath ((0,meActive,false)::monList) them in
   match rankedBySurv with 
