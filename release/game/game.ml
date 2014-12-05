@@ -134,6 +134,7 @@ let handle_step g ra ba =
   (*requires: unit*)
   (*returns: the steammon with minimum cost*)
   let findMin () = 
+    
     let lst = hash_to_list(draftpool) in
       let sorted = List.sort (fun a b -> a.cost - b.cost) lst in 
         List.hd sorted   
@@ -167,10 +168,10 @@ let handle_step g ra ba =
   (*returns: an apprpriate game_output*)
   let draftHelper gsd ogColor s checkEnd zero = 
      let switch = changeColor () in 
+     draftupdate s ogColor; 
      let pr =  Some(Request(PickRequest(!draftColor,gsd, 
                 hash_to_list (Initialization.move_table), 
                 hash_to_list(draftpool)))) in 
-     draftupdate s ogColor; 
      let gsd = draftGSD gsd ogColor s zero in 
      if checkEnd then 
         endDraft gsd 
@@ -188,7 +189,7 @@ let handle_step g ra ba =
       let checkEnd = ((List.length rsl = cNUM_PICKS-1) && 
       (List.length bsl = cNUM_PICKS)) || ((List.length rsl = cNUM_PICKS) && 
       (List.length bsl = cNUM_PICKS-1)) in 
-      let s = if Table.mem draftpool name = false then findMin () 
+      let s = if Table.mem draftpool name = false then findMin ()
         else Table.find draftpool name 
       in 
       match !draftColor with 
